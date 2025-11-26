@@ -67,6 +67,10 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
   // drag state
   private dragCtx: DragContext | null = null;
 
+  // transient invalid animation state
+  private invalidFlashSlotId: string | number | null = null;
+  private invalidFlashTimer: any = null;
+
   // creation state (for new slots)
   private createCtx: CreateContext | null = null;
   private unlistenMove: (() => void) | null = null;
@@ -94,6 +98,9 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
   ngOnDestroy(): void {
     if (this.nowTimer) {
       clearInterval(this.nowTimer);
+    }
+    if (this.invalidFlashTimer) {
+      clearTimeout(this.invalidFlashTimer);
     }
     this.cleanupGlobalPointerEvents();
   }
@@ -132,8 +139,14 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
       this.slotsByLocation[loc] = slots.map((s, idx) => {
         const fromM = this.toMinutesFromMidnight(s.dateTimeFrom);
         const toM = this.toMinutesFromMidnight(s.dateTimeTo);
-        const clampedFrom = this.clamp(fromM, 0, this.minutesInDay);
-        const clampedTo = this.clamp(toM, 0, this.minutesInDay);
+        const clampedFrom = this.snapToStep(
+          this.clamp(fromM, 0, this.minutesInDay),
+          30
+        );
+        const clampedTo = this.snapToStep(
+          this.clamp(toM, 0, this.minutesInDay),
+          30
+        );
         const span = Math.max(5, clampedTo - clampedFrom);
 
         const autoColor =
@@ -149,6 +162,7 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
           left: (clampedFrom / this.minutesInDay) * 100,
           width: (span / this.minutesInDay) * 100,
           color: s.color ?? autoColor,
+          invalid: false,
           raw: s,
         };
       });
@@ -156,6 +170,7 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
 
     this.buildNonWorking();
     this.updateNowPercent();
+    this.applyInvalidFlash();
   }
 
   private buildNonWorking(): void {
@@ -396,12 +411,38 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
         this.getLocationAtPoint(event.clientX, event.clientY) ??
         this.dragCtx.currentLocation;
 
+      const bounds = this.getWorkingBounds(targetLoc);
+      const proposedFrom = newFrom;
+      const proposedTo = newTo;
+
+      if (bounds) {
+        if (type === 'move') {
+          const span = startToMins - startFromMins;
+          newFrom = this.clamp(newFrom, bounds.start, bounds.end - span);
+          newTo = newFrom + span;
+        } else if (type === 'resize-start') {
+          newFrom = this.clamp(newFrom, bounds.start, bounds.end - minSpan);
+          if (newTo - newFrom < minSpan) {
+            newFrom = newTo - minSpan;
+          }
+        } else if (type === 'resize-end') {
+          newTo = this.clamp(newTo, bounds.start + minSpan, bounds.end);
+          if (newTo - newFrom < minSpan) {
+            newTo = newFrom + minSpan;
+          }
+        }
+      }
+
       this.dragCtx.currentLocation = targetLoc;
       this.dragCtx.currentFromMins = newFrom;
       this.dragCtx.currentToMins = newTo;
 
+      const conflict = this.hasConflict(slotId, targetLoc, newFrom, newTo);
+      const outOfWorking =
+        !!bounds && (proposedFrom < bounds.start || proposedTo > bounds.end);
+
       // live update ONLY the view model (no data mutation yet)
-      this.updateSlotViewModel(slotId, targetLoc, newFrom, newTo);
+      this.updateSlotViewModel(slotId, targetLoc, newFrom, newTo, false);
       return;
     }
 
@@ -454,6 +495,7 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
       if (conflict || outOfWorking) {
         // revert completely to original state
         this.rebuild();
+        this.flashInvalid(slotId);
       } else {
         // commit new time & (possibly new) location into data
         this.commitDragToData(
@@ -599,7 +641,8 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
     slotId: string | number,
     location: string,
     fromMins: number,
-    toMins: number
+    toMins: number,
+    invalid = false
   ): void {
     let vm: SlotViewModel | null = null;
 
@@ -615,8 +658,14 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
     }
     if (!vm) return;
 
-    const clampedFrom = this.clamp(fromMins, 0, this.minutesInDay);
-    const clampedTo = this.clamp(toMins, 0, this.minutesInDay);
+    const clampedFrom = this.snapToStep(
+      this.clamp(fromMins, 0, this.minutesInDay),
+      30
+    );
+    const clampedTo = this.snapToStep(
+      this.clamp(toMins, 0, this.minutesInDay),
+      30
+    );
     const span = Math.max(5, clampedTo - clampedFrom);
 
     const left = (clampedFrom / this.minutesInDay) * 100;
@@ -630,7 +679,49 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
       ...vm,
       left,
       width,
+      invalid,
     });
+  }
+
+  private flashInvalid(slotId: string | number): void {
+    this.invalidFlashSlotId = slotId;
+    this.applyInvalidFlash();
+
+    if (this.invalidFlashTimer) {
+      clearTimeout(this.invalidFlashTimer);
+    }
+
+    this.invalidFlashTimer = setTimeout(() => {
+      this.invalidFlashSlotId = null;
+      this.invalidFlashTimer = null;
+      this.clearInvalidFlags();
+    }, 700);
+  }
+
+  private applyInvalidFlash(): void {
+    if (this.invalidFlashSlotId == null) return;
+
+    for (const loc of this.locations) {
+      const slot = this.slotsByLocation[loc]?.find(
+        (s) => s.id === this.invalidFlashSlotId
+      );
+      if (slot) {
+        slot.invalid = true;
+        break;
+      }
+    }
+  }
+
+  private clearInvalidFlags(): void {
+    for (const loc of this.locations) {
+      const list = this.slotsByLocation[loc];
+      if (!list) continue;
+      for (const slot of list) {
+        if (slot.invalid) {
+          slot.invalid = false;
+        }
+      }
+    }
   }
 
   /** Commit the final drag result into the underlying data */
@@ -640,8 +731,14 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
     newFrom: number,
     newTo: number
   ): void {
-    const fromClamped = this.clamp(newFrom, 0, this.minutesInDay);
-    const toClamped = this.clamp(newTo, 0, this.minutesInDay);
+    const fromClamped = this.snapToStep(
+      this.clamp(newFrom, 0, this.minutesInDay),
+      30
+    );
+    const toClamped = this.snapToStep(
+      this.clamp(newTo, 0, this.minutesInDay),
+      30
+    );
 
     const updated: CompactCalendarSlot[] = this.data.map((slot) => {
       if (slot.id !== slotId) return slot;
@@ -673,7 +770,10 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   onSlotClick(slotFromCalendar: SlotViewModel): void {
-    console.log(slotFromCalendar);
+    if (this.selectedSlot?.id === slotFromCalendar.id) {
+      return;
+    }
+
     this.selectedSlot = { ...slotFromCalendar, color: slotFromCalendar.color };
   }
 
