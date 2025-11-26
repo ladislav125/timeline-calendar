@@ -12,6 +12,11 @@ import {
   selector: '[appSlotInvalid]',
   standalone: true,
 })
+/**
+ * Directive that re-triggers the shake/outline animation whenever its
+ * `invalid` input flips to true. It also removes the class after the configured
+ * duration so subsequent flashes can restart the animation.
+ */
 export class SlotInvalidDirective implements OnChanges, OnDestroy {
   @Input('appSlotInvalid') invalid = false;
   @Input() invalidFlashDuration = 700;
@@ -25,6 +30,7 @@ export class SlotInvalidDirective implements OnChanges, OnDestroy {
 
   private host: HTMLElement;
 
+  /** Restart the animation whenever the invalid flag turns true. */
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['invalid'] && this.invalid) {
       // Remove and re-add to restart the animation when re-triggered.
@@ -36,10 +42,12 @@ export class SlotInvalidDirective implements OnChanges, OnDestroy {
     }
   }
 
+  /** Clean up pending timers when the directive is destroyed. */
   ngOnDestroy(): void {
     this.cancelClear();
   }
 
+  /** Schedule automatic removal of the invalid class after the flash window. */
   private scheduleClear(): void {
     this.cancelClear();
     this.hasPendingRemoval = true;
@@ -51,6 +59,7 @@ export class SlotInvalidDirective implements OnChanges, OnDestroy {
     }, this.invalidFlashDuration);
   }
 
+  /** Cancel any pending clear timer and immediately remove transient classes. */
   private cancelClear(): void {
     if (this.clearTimer) {
       clearTimeout(this.clearTimer);

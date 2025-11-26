@@ -15,6 +15,11 @@ import { CommonModule } from '@angular/common';
   standalone: true,
   imports: [CommonModule],
 })
+/**
+ * Floating badge that displays details for the selected slot. It simulates a
+ * brief loading state before revealing content and auto-hides after a period of
+ * inactivity unless the user hovers over it.
+ */
 export class SlotDetailComponent implements OnChanges, OnDestroy {
   @Input() slot: SlotViewModel | null = null;
   /** fallback farba ak nepríde z dát */
@@ -31,16 +36,22 @@ export class SlotDetailComponent implements OnChanges, OnDestroy {
   private hideTimeoutId: any;
   private loadingTimeoutId: any;
 
+  /** Start the show cycle when a new slot arrives. */
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['slot'] && this.slot) {
       this.startShowCycle();
     }
   }
 
+  /** Clear timers when the badge is destroyed. */
   ngOnDestroy(): void {
     this.clearTimers();
   }
 
+  /**
+   * Reset state, show the badge, simulate a loading pause, and schedule
+   * auto-hide. Mirrors behavior from the original JS implementation.
+   */
   private startShowCycle(): void {
     this.clearTimers();
 
@@ -61,17 +72,20 @@ export class SlotDetailComponent implements OnChanges, OnDestroy {
     }, this.autoHideMs);
   }
 
+  /** Mark the badge as noticed so it stays open while hovered. */
   onMouseEnter(): void {
     // po prvom hoveri sa správa ako "všimnutý" – zobraz detaily
     this.unnoticed = false;
   }
 
+  /** Hide the badge and stop any pending timers. */
   close(): void {
     this.visible = false;
     this.slot = null;
     this.clearTimers();
   }
 
+  /** Cancel both loading and auto-hide timers. */
   private clearTimers(): void {
     if (this.hideTimeoutId) {
       clearTimeout(this.hideTimeoutId);
@@ -83,6 +97,7 @@ export class SlotDetailComponent implements OnChanges, OnDestroy {
     }
   }
 
+  /** Use the slot color when available, otherwise fall back to default. */
   get backgroundColor(): string {
     return this.slot?.color || this.defaultColor;
   }
