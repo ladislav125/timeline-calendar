@@ -67,6 +67,10 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
   // drag state
   private dragCtx: DragContext | null = null;
 
+  // transient invalid animation state
+  private invalidFlashSlotId: string | number | null = null;
+  private invalidFlashTimer: any = null;
+
   // creation state (for new slots)
   private createCtx: CreateContext | null = null;
   private unlistenMove: (() => void) | null = null;
@@ -94,6 +98,9 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
   ngOnDestroy(): void {
     if (this.nowTimer) {
       clearInterval(this.nowTimer);
+    }
+    if (this.invalidFlashTimer) {
+      clearTimeout(this.invalidFlashTimer);
     }
     this.cleanupGlobalPointerEvents();
   }
@@ -163,6 +170,7 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
 
     this.buildNonWorking();
     this.updateNowPercent();
+    this.applyInvalidFlash();
   }
 
   private buildNonWorking(): void {
@@ -434,13 +442,7 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
         !!bounds && (proposedFrom < bounds.start || proposedTo > bounds.end);
 
       // live update ONLY the view model (no data mutation yet)
-      this.updateSlotViewModel(
-        slotId,
-        targetLoc,
-        newFrom,
-        newTo,
-        conflict || outOfWorking
-      );
+      this.updateSlotViewModel(slotId, targetLoc, newFrom, newTo, false);
       return;
     }
 
@@ -493,6 +495,7 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
       if (conflict || outOfWorking) {
         // revert completely to original state
         this.rebuild();
+        this.flashInvalid(slotId);
       } else {
         // commit new time & (possibly new) location into data
         this.commitDragToData(
@@ -678,6 +681,47 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
       width,
       invalid,
     });
+  }
+
+  private flashInvalid(slotId: string | number): void {
+    this.invalidFlashSlotId = slotId;
+    this.applyInvalidFlash();
+
+    if (this.invalidFlashTimer) {
+      clearTimeout(this.invalidFlashTimer);
+    }
+
+    this.invalidFlashTimer = setTimeout(() => {
+      this.invalidFlashSlotId = null;
+      this.invalidFlashTimer = null;
+      this.clearInvalidFlags();
+    }, 700);
+  }
+
+  private applyInvalidFlash(): void {
+    if (this.invalidFlashSlotId == null) return;
+
+    for (const loc of this.locations) {
+      const slot = this.slotsByLocation[loc]?.find(
+        (s) => s.id === this.invalidFlashSlotId
+      );
+      if (slot) {
+        slot.invalid = true;
+        break;
+      }
+    }
+  }
+
+  private clearInvalidFlags(): void {
+    for (const loc of this.locations) {
+      const list = this.slotsByLocation[loc];
+      if (!list) continue;
+      for (const slot of list) {
+        if (slot.invalid) {
+          slot.invalid = false;
+        }
+      }
+    }
   }
 
   /** Commit the final drag result into the underlying data */
