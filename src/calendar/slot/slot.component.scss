@@ -1,7 +1,13 @@
 .slot {
   position: absolute;
   top: 7px;
-  height: calc(var(--row-height) - 30px);
+  /*
+   * Preserve the visual slot height after switching to border-box sizing.
+   * Account for the 8px top and bottom padding (16px total) that were
+   * previously added on top of the declared height with content-box sizing.
+   */
+  height: calc(var(--row-height) - 14px);
+  box-sizing: border-box;
   border-radius: 12px;
   color: var(--slot-text);
   padding: 8px 30px 8px 10px;
@@ -57,4 +63,25 @@
 .slot:hover .h-left,
 .slot:hover .h-right {
   opacity: 0.7;
+}
+
+.slot.invalid {
+  outline: 2px solid var(--danger);
+  animation: shake 0.28s linear 0s 1;
+}
+
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-4px);
+  }
+  50% {
+    transform: translateX(4px);
+  }
+  75% {
+    transform: translateX(-2px);
+  }
 }

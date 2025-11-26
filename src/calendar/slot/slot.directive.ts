@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import { DragType, SlotViewModel } from '../calendar.types';
 
+/** Event payload surfaced on drag move/end to the host component. */
 export type SlotDragEvent = {
   slotId: string | number;
   location: string;
@@ -18,6 +19,7 @@ export type SlotDragEvent = {
   toMins: number;
 };
 
+/** Internal bookkeeping for an active drag interaction. */
 interface InternalDragCtx {
   type: DragType;
   slotId: string | number;
@@ -34,29 +36,36 @@ interface InternalDragCtx {
 @Directive({
   selector: '[appSlotDrag]',
 })
+/**
+ * Standalone directive that wires low-level pointer handling for a slot element
+ * and emits granular drag progress/finalization events. This file mirrors the
+ * calendar component's logic but is not currently wired in the template; it is
+ * preserved for parity with earlier implementations.
+ */
 export class SlotDragDirective implements OnDestroy {
-  /** Slot view model of this element */
+  /** Slot view model of this element. */
   @Input('appSlotDrag') slot!: SlotViewModel;
 
-  /** Current row / location name */
+  /** Current row / location name. */
   @Input() slotLocation!: string;
 
-  /** Minutes in a day – keep in sync with parent */
+  /** Minutes in a day – keep in sync with parent. */
   @Input() minutesInDay = 24 * 60;
 
-  /** Snap step in minutes */
+  /** Snap step in minutes. */
   @Input() snapStep = 30;
 
-  /** Emitted on every pointer move with live position */
+  /** Emitted on every pointer move with live position. */
   @Output() dragMove = new EventEmitter<SlotDragEvent>();
 
-  /** Emitted once on pointerup with final position */
+  /** Emitted once on pointerup with final position. */
   @Output() dragEnd = new EventEmitter<SlotDragEvent>();
 
   private dragCtx: InternalDragCtx | null = null;
 
   constructor(private el: ElementRef<HTMLElement>) {}
 
+  /** Remove global listeners when the directive is destroyed. */
   ngOnDestroy(): void {
     this.detachWindowListeners();
   }
@@ -64,6 +73,11 @@ export class SlotDragDirective implements OnDestroy {
   /* ============ HOST POINTER DOWN ============ */
 
   @HostListener('pointerdown', ['$event'])
+  /**
+   * Capture the starting drag state when the user clicks a slot or one of its
+   * resize handles. This handler attaches global listeners to continue tracking
+   * the pointer outside the host element.
+   */
   onPointerDown(ev: PointerEvent): void {
     if (ev.button !== 0) return;
 
@@ -113,6 +127,7 @@ export class SlotDragDirective implements OnDestroy {
 
   /* ============ WINDOW POINTER MOVE / UP ============ */
 
+  /** Track pointer movement and emit live drag progress. */
   private onWindowPointerMove = (ev: PointerEvent) => {
     if (!this.dragCtx) return;
 
@@ -166,6 +181,7 @@ export class SlotDragDirective implements OnDestroy {
     });
   };
 
+  /** Emit the final drag state and tear down listeners. */
   private onWindowPointerUp = (ev: PointerEvent) => {
     if (!this.dragCtx) return;
 
@@ -189,11 +205,13 @@ export class SlotDragDirective implements OnDestroy {
 
   /* ============ HELPERS ============ */
 
+  /** Subscribe to global pointer events for the active drag session. */
   private attachWindowListeners(): void {
     window.addEventListener('pointermove', this.onWindowPointerMove);
     window.addEventListener('pointerup', this.onWindowPointerUp);
   }
 
+  /** Remove global pointer subscriptions. */
   private detachWindowListeners(): void {
     window.removeEventListener('pointermove', this.onWindowPointerMove);
     window.removeEventListener('pointerup', this.onWindowPointerUp);
@@ -204,6 +222,7 @@ export class SlotDragDirective implements OnDestroy {
     return this.el.nativeElement.closest('.rtrack') as HTMLElement | null;
   }
 
+  /** Determine which row is under the pointer position. */
   private getLocationAtPoint(x: number, y: number): string | null {
     const el = document.elementFromPoint(x, y) as HTMLElement | null;
     if (!el) return null;
@@ -213,6 +232,7 @@ export class SlotDragDirective implements OnDestroy {
     return loc || null;
   }
 
+  /** Convert an ISO string to minutes-from-midnight (local). */
   private toMinutesFromMidnight(iso: string): number {
     if (!iso) return 0;
     const [_, timePart] = iso.split('T');
@@ -224,10 +244,12 @@ export class SlotDragDirective implements OnDestroy {
     return isFinite(mins) ? mins : 0;
   }
 
+  /** Restrict a value to a range. */
   private clamp(v: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, v));
   }
 
+  /** Snap minutes to the configured step. */
   private snap(mins: number): number {
     return Math.round(mins / this.snapStep) * this.snapStep;
   }
