@@ -2,6 +2,7 @@
   position: absolute;
   top: 7px;
   height: calc(var(--row-height) - 30px);
+  box-sizing: border-box;
   border-radius: 12px;
   color: var(--slot-text);
   padding: 8px 30px 8px 10px;
