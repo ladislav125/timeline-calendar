@@ -711,7 +711,10 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   onSlotClick(slotFromCalendar: SlotViewModel): void {
-    console.log(slotFromCalendar);
+    if (this.selectedSlot?.id === slotFromCalendar.id) {
+      return;
+    }
+
     this.selectedSlot = { ...slotFromCalendar, color: slotFromCalendar.color };
   }
 
