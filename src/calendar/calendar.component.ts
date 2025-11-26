@@ -132,8 +132,14 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
       this.slotsByLocation[loc] = slots.map((s, idx) => {
         const fromM = this.toMinutesFromMidnight(s.dateTimeFrom);
         const toM = this.toMinutesFromMidnight(s.dateTimeTo);
-        const clampedFrom = this.clamp(fromM, 0, this.minutesInDay);
-        const clampedTo = this.clamp(toM, 0, this.minutesInDay);
+        const clampedFrom = this.snapToStep(
+          this.clamp(fromM, 0, this.minutesInDay),
+          30
+        );
+        const clampedTo = this.snapToStep(
+          this.clamp(toM, 0, this.minutesInDay),
+          30
+        );
         const span = Math.max(5, clampedTo - clampedFrom);
 
         const autoColor =
@@ -396,6 +402,26 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
         this.getLocationAtPoint(event.clientX, event.clientY) ??
         this.dragCtx.currentLocation;
 
+      const bounds = this.getWorkingBounds(targetLoc);
+
+      if (bounds) {
+        if (type === 'move') {
+          const span = startToMins - startFromMins;
+          newFrom = this.clamp(newFrom, bounds.start, bounds.end - span);
+          newTo = newFrom + span;
+        } else if (type === 'resize-start') {
+          newFrom = this.clamp(newFrom, bounds.start, bounds.end - minSpan);
+          if (newTo - newFrom < minSpan) {
+            newFrom = newTo - minSpan;
+          }
+        } else if (type === 'resize-end') {
+          newTo = this.clamp(newTo, bounds.start + minSpan, bounds.end);
+          if (newTo - newFrom < minSpan) {
+            newTo = newFrom + minSpan;
+          }
+        }
+      }
+
       this.dragCtx.currentLocation = targetLoc;
       this.dragCtx.currentFromMins = newFrom;
       this.dragCtx.currentToMins = newTo;
@@ -615,8 +641,14 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
     }
     if (!vm) return;
 
-    const clampedFrom = this.clamp(fromMins, 0, this.minutesInDay);
-    const clampedTo = this.clamp(toMins, 0, this.minutesInDay);
+    const clampedFrom = this.snapToStep(
+      this.clamp(fromMins, 0, this.minutesInDay),
+      30
+    );
+    const clampedTo = this.snapToStep(
+      this.clamp(toMins, 0, this.minutesInDay),
+      30
+    );
     const span = Math.max(5, clampedTo - clampedFrom);
 
     const left = (clampedFrom / this.minutesInDay) * 100;
@@ -640,8 +672,14 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
     newFrom: number,
     newTo: number
   ): void {
-    const fromClamped = this.clamp(newFrom, 0, this.minutesInDay);
-    const toClamped = this.clamp(newTo, 0, this.minutesInDay);
+    const fromClamped = this.snapToStep(
+      this.clamp(newFrom, 0, this.minutesInDay),
+      30
+    );
+    const toClamped = this.snapToStep(
+      this.clamp(newTo, 0, this.minutesInDay),
+      30
+    );
 
     const updated: CompactCalendarSlot[] = this.data.map((slot) => {
       if (slot.id !== slotId) return slot;
