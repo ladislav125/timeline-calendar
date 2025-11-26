@@ -6,6 +6,7 @@ import {
   ViewEncapsulation,
 } from '@angular/core';
 import { DragType, SlotViewModel } from '../calendar.types';
+import { SlotInvalidDirective } from './slot-invalid.directive';
 
 export interface SlotPointerDownPayload {
   event: PointerEvent;
@@ -18,6 +19,7 @@ export interface SlotPointerDownPayload {
   selector: 'app-compact-calendar-slot',
   standalone: true,
   encapsulation: ViewEncapsulation.Emulated,
+  imports: [SlotInvalidDirective],
   templateUrl: './slot.component.html',
   styleUrls: ['./slot.component.scss'],
 })
