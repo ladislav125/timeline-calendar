@@ -658,6 +658,9 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   private flashInvalid(slotId: string | number): void {
+    // Ensure only one slot shows the transient invalid state at a time.
+    this.clearInvalidFlags();
+
     this.invalidFlashSlotId = slotId;
     this.applyInvalidFlash();
 
