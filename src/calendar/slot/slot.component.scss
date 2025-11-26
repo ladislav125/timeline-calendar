@@ -1,0 +1,60 @@
+.slot {
+  position: absolute;
+  top: 7px;
+  height: calc(var(--row-height) - 30px);
+  border-radius: 12px;
+  color: var(--slot-text);
+  padding: 8px 30px 8px 10px;
+  box-shadow: 0 2px 8px var(--slot-shadow);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 10px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  z-index: 3;
+}
+.slot:active {
+  cursor: grabbing;
+}
+.slot .tn {
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.slot .carrier {
+  font-size: 11px;
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+} /* resize handles */
+.slot .h-left,
+.slot .h-right {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  background: rgba(0, 0, 0, 0.08);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.slot .h-left {
+  left: 0;
+  cursor: ew-resize;
+  border-radius: 12px 0 0 12px;
+}
+.slot .h-right {
+  right: 0;
+  cursor: ew-resize;
+  border-radius: 0 12px 12px 0;
+}
+.slot:hover .h-left,
+.slot:hover .h-right {
+  opacity: 0.7;
+}

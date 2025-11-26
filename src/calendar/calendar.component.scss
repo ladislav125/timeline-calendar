@@ -1,0 +1,206 @@
+.compact-calendar {
+  position: relative;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    sans-serif;
+  font-size: 13px;
+  color: #111827;
+
+  --row-height: 58px;
+  --label-col-width: 220px;
+  --grid-bg: #f6f7fb;
+  --grid-line: #d7dbe7; // hour
+  --grid-line-light: #f1eaea; // half-hour
+  --nonwork: #e9eaee;
+  --slot-text: #0b1220;
+  --slot-shadow: rgba(0, 0, 0, 0.12);
+  --danger: #e24c4c;
+}
+
+/* HEADER */
+
+.compact-calendar .cal-head {
+  display: flex;
+  border-bottom: 1px solid #e5e7eb;
+  background: #ffffff;
+}
+
+.compact-calendar .cal-head .label {
+  width: var(--label-col-width);
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+}
+
+.compact-calendar .cal-head .label span:first-child {
+  font-weight: 600;
+}
+
+.compact-calendar .cal-head .label span:last-child {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.compact-calendar .cal-head .timeline {
+  position: relative;
+  flex: 1;
+  height: 44px;
+  overflow: hidden;
+}
+
+.compact-calendar .cal-head .hours {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* Draw all vertical lines via background:
+   - hour lines every 1/24 of width
+   - half-hour lines every 1/48 of width
+*/
+.compact-calendar .cal-head .hours::before {
+  content: '';
+  position: absolute;
+  top: 20px;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-image: linear-gradient(
+    to right,
+    var(--grid-line) 1px,
+    transparent 1px
+  );
+  background-size: calc(100% / 24) 100%; /* EXACT 1 hour column */
+  background-repeat: repeat-x;
+}
+
+/* half-hour ticks (half height) */
+.compact-calendar .cal-head .hours::after {
+  content: '';
+  position: absolute;
+  top: 30px;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-image: linear-gradient(
+    to right,
+    var(--grid-line-light) 1px,
+    transparent 1px
+  );
+  background-size: calc(100% / 48) 100%; /* EXACT 30 min column */
+  background-repeat: repeat-x;
+}
+
+/* hour labels only, no lines here */
+.compact-calendar .cal-head .hlabel {
+  position: absolute;
+  top: 4px;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: #4b5563;
+}
+
+/* BODY */
+
+.compact-calendar .cal-body {
+  max-height: 260px;
+  overflow: auto;
+  background: #f9fafb;
+}
+
+.compact-calendar .cal-row {
+  display: flex;
+  min-height: var(--row-height);
+  border-bottom: 1px solid #e5e7eb;
+  background: #ffffff;
+}
+
+.compact-calendar .cal-row:nth-child(even) {
+  background: #f9fafb;
+}
+
+.compact-calendar .rlabel {
+  width: var(--label-col-width);
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  font-weight: 500;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.compact-calendar .rtrack {
+  position: relative;
+  flex: 1;
+  background-color: var(--grid-bg);
+  overflow: hidden;
+
+  /* exact same grid logic as header (hours::before / ::after) */
+  background-image: linear-gradient(
+      to right,
+      var(--grid-line) 1px,
+      transparent 1px
+    ),
+    linear-gradient(to right, var(--grid-line-light) 1px, transparent 1px);
+  background-size: calc(100% / 24) 100%, /* hour columns */ calc(100% / 48) 100%; /* half-hour columns */
+  background-repeat: repeat-x, repeat-x;
+  background-position: left top, left top;
+}
+
+.compact-calendar .rtrack .nonwork {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--nonwork);
+  z-index: 1; /* sits above grid, below slots */
+}
+
+/* selection rectangle when creating a new slot */
+.compact-calendar .slot-selection {
+  position: absolute;
+  top: 6px;
+  height: calc(var(--row-height) - 30px);
+  border-radius: 12px;
+  background: rgba(59, 130, 246, 0.25);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* current time line */
+
+.compact-calendar .time-identifier {
+  position: absolute;
+  top: 44px; /* exactly under header */
+  bottom: 0;
+  width: 2px;
+  background: rgba(239, 68, 68, 0.9);
+  pointer-events: none;
+  z-index: 5;
+}
+
+
+
+.compact-calendar .slot-preview {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 1000;
+}
+
+/* používame rovnakú .slot, len ju pre preview upravíme z absolute na box */
+.compact-calendar .slot-preview .slot {
+  position: relative;
+  top: auto;
+  left: auto;
+  height: auto;
+  width: 260px;
+  padding-right: 12px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.35);
+}
+
+.compact-calendar .slot-preview .time {
+  font-size: 11px;
+  opacity: 0.85;
+  margin-bottom: 4px;
+}

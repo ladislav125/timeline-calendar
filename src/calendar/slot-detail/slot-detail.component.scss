@@ -1,0 +1,158 @@
+:root {
+  --danger: #e24c4c;
+}
+
+/* wrapper vpravo dole */
+.edit-slot {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  width: 330px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(10px);
+  border-radius: 1rem;
+  opacity: 0;
+  transition: opacity 0.5s ease-in-out, width 0.3s ease-in-out,
+    height 0.3s ease-in-out;
+  z-index: 1000;
+  padding: 1rem;
+  min-height: 56px;
+  height: auto;
+  pointer-events: auto;
+  color: #fff;
+}
+
+/* stav viditeľnosti */
+.edit-slot.visible {
+  opacity: 1;
+}
+
+/* loading stav – kruhový loader */
+.edit-slot.loading {
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.slot-loader {
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top: 2px solid #fff;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  animation: spin 1s linear infinite;
+}
+
+.slot-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/*** SHORT VERSION (TOP) ***/
+.slot-details-top {
+  display: none;
+  justify-content: space-between;
+}
+.slot-details-top .tn {
+  font-weight: 700;
+  font-size: 0.75rem;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.slot-details-top .carrier {
+  font-size: 0.75rem;
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.slot-details-top .time {
+  font-weight: 700;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+/*** FULL VERSION ***/
+.slot-details-full {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.8rem;
+  gap: 0.5rem;
+}
+
+.slot-details-full > * {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: 1px dotted rgba(255, 255, 255, 0.2);
+  padding-bottom: 0.25rem;
+}
+
+.slot-details-full strong {
+  font-size: 0.9rem;
+}
+
+/* header s akciami */
+.slot-details-full header {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 1rem;
+  padding: 0;
+  border-bottom: none;
+}
+
+.slot-details-full header h3 {
+  font-size: 0.8rem;
+  font-weight: 800;
+  margin: 0;
+  padding: 0;
+}
+
+.slot-details-full header .actions {
+  margin-left: auto;
+}
+
+.close-button {
+  margin-left: 0.5rem;
+  padding-right: 0;
+  border: none;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+}
+
+/*** STAV .unnoticed (len krátka verzia) ***/
+
+.edit-slot.unnoticed {
+  height: 56px;
+  min-height: 56px;
+  max-height: 56px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden; /* prevent inner content from expanding */
+}
+
+.edit-slot.unnoticed .slot-details-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 16px;
+  width: 298px;
+}
+
+.edit-slot.unnoticed .slot-details-full {
+  display: none;
+}
+
+/*** animácie ***/
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

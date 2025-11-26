@@ -1,0 +1,64 @@
+<div class="compact-calendar">
+  <!-- HEADER -->
+  <div class="cal-head">
+    <div class="label">
+      <span>{{ dateLabel }}</span> <span>{{ timeLabel }}</span>
+    </div>
+    <div class="timeline">
+      <div class="hours">
+        <!-- hour labels only; lines are drawn via background -->
+        <div
+          class="hlabel"
+          *ngFor="let h of hours"
+          [style.left.%]="(h / 24) * 100"
+        >
+          {{ h | number : '2.0' }}
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- BODY -->
+  <div class="cal-body">
+    <div
+      class="cal-row"
+      *ngFor="let location of locations"
+      [attr.data-location]="location"
+    >
+      <div class="rlabel">{{ location }}</div>
+      <div
+        class="rtrack"
+        #track
+        (pointerdown)="onTrackPointerDown($event, track, location)"
+      >
+        <!-- non-working areas -->
+        <div
+          class="nonwork"
+          *ngFor="let nw of nonWorkingByLocation[location] || []"
+          [style.left.%]="nw.left"
+          [style.width.%]="nw.width"
+        ></div>
+        <!-- slots -->
+        <app-compact-calendar-slot
+          *ngFor="let s of slotsByLocation[location] || []"
+          [slot]="s"
+          [location]="location"
+          (slotPointerDown)="onSlotPointerDownFromChild($event, track)"
+          (slotClick)="onSlotClick(s)"
+        ></app-compact-calendar-slot>
+      </div>
+    </div>
+  </div>
+  <!-- current time line -->
+  <div
+    class="time-identifier"
+    *ngIf="showNowLine && nowPercent >= 0"
+    [style.left.%]="nowPercent"
+  ></div>
+
+  <app-slot-detail
+    [slot]="selectedSlot || null"
+    [defaultColor]="'#58b7b0'"
+    [autoHideMs]="10000"
+    [loadingMs]="800"
+  ></app-slot-detail>
+</div>

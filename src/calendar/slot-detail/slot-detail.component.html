@@ -1,0 +1,62 @@
+<div
+  *ngIf="slot && visible"
+  class="edit-slot"
+  [ngClass]="{
+    loading: loading,
+    unnoticed: unnoticed,
+    visible: visible
+  }"
+  [style.background]="backgroundColor"
+  (mouseenter)="onMouseEnter()"
+>
+  <div *ngIf="loading" class="slot-loader"></div>
+
+  <div *ngIf="!loading" class="slot-details">
+    <ng-container *ngIf="slot?.raw as raw">
+      <div class="slot-details-top">
+        <div class="slot-details-top-left">
+          <div class="tn">{{ raw.tn }}</div>
+          <div class="carrier">{{ raw.carrier }}</div>
+        </div>
+        <div class="slot-details-top-right">
+          <div class="time time-from">
+            {{ raw.dateTimeFrom | date : 'HH:mm' }}
+          </div>
+          <div class="time time-to">
+            {{ raw.dateTimeTo | date : 'HH:mm' }}
+          </div>
+        </div>
+      </div>
+
+      <div class="slot-details-full">
+        <header>
+          <h3>Slot Details</h3>
+          <div class="actions"></div>
+          <button
+            type="button"
+            class="btn btn-default close-button"
+            (click)="close()"
+          >
+            ✕
+          </button>
+        </header>
+
+        <div class="tn">
+          Tn: <strong>{{ raw.tn }}</strong>
+        </div>
+        <div class="carrier">
+          Carrier: <strong>{{ raw.carrier }}</strong>
+        </div>
+        <div class="from">
+          From: <strong>{{ raw.dateTimeFrom | date : 'HH:mm' }}</strong>
+        </div>
+        <div class="to">
+          To: <strong>{{ raw.dateTimeTo | date : 'HH:mm' }}</strong>
+        </div>
+        <div class="location">
+          Location: <strong>{{ raw.location }}</strong>
+        </div>
+      </div>
+    </ng-container>
+  </div>
+</div>
