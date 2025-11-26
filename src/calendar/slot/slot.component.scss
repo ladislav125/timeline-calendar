@@ -1,7 +1,12 @@
 .slot {
   position: absolute;
   top: 7px;
-  height: calc(var(--row-height) - 30px);
+  /*
+   * Preserve the visual slot height after switching to border-box sizing.
+   * Account for the 8px top and bottom padding (16px total) that were
+   * previously added on top of the declared height with content-box sizing.
+   */
+  height: calc(var(--row-height) - 14px);
   box-sizing: border-box;
   border-radius: 12px;
   color: var(--slot-text);
