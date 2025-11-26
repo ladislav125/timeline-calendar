@@ -24,6 +24,7 @@ export interface SlotPointerDownPayload {
 export class CalendarSlotComponent {
   @Input() slot!: SlotViewModel;
   @Input() location!: string;
+  @Input() invalid = false;
 
   @Output() slotClick = new EventEmitter<SlotViewModel>();
   @Output() slotPointerDown = new EventEmitter<SlotPointerDownPayload>();

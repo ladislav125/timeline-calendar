@@ -155,6 +155,7 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
           left: (clampedFrom / this.minutesInDay) * 100,
           width: (span / this.minutesInDay) * 100,
           color: s.color ?? autoColor,
+          invalid: false,
           raw: s,
         };
       });
@@ -403,6 +404,8 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
         this.dragCtx.currentLocation;
 
       const bounds = this.getWorkingBounds(targetLoc);
+      const proposedFrom = newFrom;
+      const proposedTo = newTo;
 
       if (bounds) {
         if (type === 'move') {
@@ -426,8 +429,18 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
       this.dragCtx.currentFromMins = newFrom;
       this.dragCtx.currentToMins = newTo;
 
+      const conflict = this.hasConflict(slotId, targetLoc, newFrom, newTo);
+      const outOfWorking =
+        !!bounds && (proposedFrom < bounds.start || proposedTo > bounds.end);
+
       // live update ONLY the view model (no data mutation yet)
-      this.updateSlotViewModel(slotId, targetLoc, newFrom, newTo);
+      this.updateSlotViewModel(
+        slotId,
+        targetLoc,
+        newFrom,
+        newTo,
+        conflict || outOfWorking
+      );
       return;
     }
 
@@ -625,7 +638,8 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
     slotId: string | number,
     location: string,
     fromMins: number,
-    toMins: number
+    toMins: number,
+    invalid = false
   ): void {
     let vm: SlotViewModel | null = null;
 
@@ -662,6 +676,7 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
       ...vm,
       left,
       width,
+      invalid,
     });
   }
 
