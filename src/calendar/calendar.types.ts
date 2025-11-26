@@ -25,6 +25,7 @@ export type SlotViewModel = {
   left: number; // %
   width: number; // %
   color: string;
+  invalid?: boolean;
   raw: CompactCalendarSlot;
 }
 
