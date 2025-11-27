@@ -1,3 +1,7 @@
+/**
+ * Convert a minute count (from midnight) into a zero-padded HH:mm string for
+ * display.
+ */
 export function formatMinutes(mins: number): string {
   const h = Math.floor(mins / 60);
   const m = mins % 60;
