@@ -23,6 +23,11 @@ import { palette } from './calendar.consts';
 import { CalendarSlotComponent } from './slot/slot.component';
 import { SlotDetailComponent } from './slot-detail/slot-detail.component';
 
+/**
+ * Internal state captured when the user drags on an empty row to create a brand
+ * new slot. It keeps the original pointer position, the selected location and
+ * the ephemeral selection element that is stretched while the pointer moves.
+ */
 interface CreateContext {
   trackEl: HTMLElement;
   location: string;
@@ -39,61 +44,106 @@ interface CreateContext {
   templateUrl: './calendar.component.html',
   styleUrls: ['./calendar.component.scss'],
 })
+/**
+ * Compact calendar view that renders a time-based grid grouped by locations.
+ *
+ * The component:
+ * - normalizes incoming slot data into view models snapped to 30-minute steps
+ * - shows working-hour gaps per location so users can see blocked ranges
+ * - supports dragging, resizing, and cross-row moves with collision detection
+ * - prevents placing slots in conflicting or non-working periods and flashes a
+ *   transient invalid animation when a move is reverted
+ * - emits `slotChange` whenever the user commits a valid drag, resize, or
+ *   creation so the host application can persist the change
+ */
 export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
   /** Texts shown on the left */
   @Input() dateLabel = '';
   @Input() timeLabel = '06:00 - 24:00';
 
-  /** Slots & working hours */
+  /** Raw slot data provided by the host application. */
   @Input() data: CompactCalendarSlot[] = [];
+  /** Working hours per location that define the allowed placement window. */
   @Input() workingHours: WorkingHoursMap = {};
 
-  /** Show vertical “now” line when the selected day is today */
+  /** Whether to render a vertical “now” indicator when viewing the current day. */
   @Input() showNowLine = true;
 
-  /** Emits updated slot when user finishes drag/resizing or creates one */
+  /** Emits an updated slot when the user commits a drag, resize, or creation. */
   @Output() slotChange = new EventEmitter<CompactCalendarSlot>();
 
+  /** Unique locations derived from the input data, used to render rows. */
   locations: string[] = [];
+  /** Normalized slot view models keyed by location for easy rendering. */
   slotsByLocation: Record<string, SlotViewModel[]> = {};
+  /** Non-working ranges per location expressed as percentages of the track. */
   nonWorkingByLocation: Record<string, { left: number; width: number }[]> = {};
 
-  hours = Array.from({ length: 25 }, (_, i) => i); // 0..24 labels
+  /** Hour labels for the header timeline (0–24). */
+  hours = Array.from({ length: 25 }, (_, i) => i);
 
+  /** Current "now" indicator position (0–100) or -1 when hidden. */
   nowPercent = -1;
+  /** Calculated CSS left offset that anchors the now-line to the timeline only. */
+  nowLineLeft = '';
+  /** Start-of-day marker for the current dataset, used for "now" detection. */
   private currentDayStart: Date | null = null;
+  /** Interval ID used to refresh the moving "now" indicator. */
   private nowTimer: any;
 
-  // drag state
+  /** Drag/resizing context captured when pointer-down begins on a slot. */
   private dragCtx: DragContext | null = null;
 
-  // creation state (for new slots)
+  /**
+   * Tracks which slot should temporarily show the invalid animation after a
+   * reverted drop, along with the timeout that clears the state.
+   */
+  private invalidFlashSlotId: string | number | null = null;
+  private invalidFlashTimer: any = null;
+
+  /** Pointer-drag creation context and global event teardown callbacks. */
   private createCtx: CreateContext | null = null;
   private unlistenMove: (() => void) | null = null;
   private unlistenUp: (() => void) | null = null;
 
+  /** Constant representing the total minutes contained in one day. */
   private readonly minutesInDay = 24 * 60;
 
+  /** Slot currently opened in the detail badge. */
   selectedSlot: SlotViewModel | null = null;
   selectedSlotTimeRange = '';
 
   constructor(private renderer: Renderer2) {}
 
+  /**
+   * Normalize incoming data, prime the moving "now" indicator, and install
+   * global pointer listeners used to monitor drag interactions outside of the
+   * component's template.
+   */
   ngOnInit(): void {
     this.rebuild();
     this.startNowTimer();
     this.bindGlobalPointerEvents();
   }
 
+  /**
+   * Rebuild the view model whenever slot data, working hours, or the displayed
+   * date label changes. This keeps rendered positions in sync with the latest
+   * inputs.
+   */
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['data'] || changes['workingHours'] || changes['dateLabel']) {
       this.rebuild();
     }
   }
 
+  /** Tear down timers and global listeners when the component is destroyed. */
   ngOnDestroy(): void {
     if (this.nowTimer) {
       clearInterval(this.nowTimer);
+    }
+    if (this.invalidFlashTimer) {
+      clearTimeout(this.invalidFlashTimer);
     }
     this.cleanupGlobalPointerEvents();
   }
@@ -102,6 +152,11 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
      Build view model (slots + non-working)
      =========================== */
 
+  /**
+   * Recompute internal view models from the latest input data. Slots are
+   * snapped to the 30-minute grid, auto-colored (when needed), grouped by
+   * location, and paired with non-working overlays and the current-time marker.
+   */
   private rebuild(): void {
     if (!this.data || this.data.length === 0) {
       this.locations = [];
@@ -132,8 +187,14 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
       this.slotsByLocation[loc] = slots.map((s, idx) => {
         const fromM = this.toMinutesFromMidnight(s.dateTimeFrom);
         const toM = this.toMinutesFromMidnight(s.dateTimeTo);
-        const clampedFrom = this.clamp(fromM, 0, this.minutesInDay);
-        const clampedTo = this.clamp(toM, 0, this.minutesInDay);
+        const clampedFrom = this.snapToStep(
+          this.clamp(fromM, 0, this.minutesInDay),
+          30
+        );
+        const clampedTo = this.snapToStep(
+          this.clamp(toM, 0, this.minutesInDay),
+          30
+        );
         const span = Math.max(5, clampedTo - clampedFrom);
 
         const autoColor =
@@ -149,6 +210,7 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
           left: (clampedFrom / this.minutesInDay) * 100,
           width: (span / this.minutesInDay) * 100,
           color: s.color ?? autoColor,
+          invalid: false,
           raw: s,
         };
       });
@@ -156,8 +218,14 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
 
     this.buildNonWorking();
     this.updateNowPercent();
+    this.applyInvalidFlash();
   }
 
+  /**
+   * Translate working-hour definitions into track overlays that highlight the
+   * periods where the user cannot drop a slot. The overlays are stored as
+   * percentages for easy binding in the template.
+   */
   private buildNonWorking(): void {
     this.nonWorkingByLocation = {};
 
@@ -192,7 +260,11 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
      Time & working-hours helpers
      =========================== */
 
-  /** parse "YYYY-MM-DDTHH:mm:ss" into minutes from midnight, ignoring timezone */
+  /**
+   * Parse an ISO string (YYYY-MM-DDTHH:mm:ss) into absolute minutes from
+   * midnight. The conversion intentionally ignores time zones because the
+   * compact calendar operates in the provided local day context.
+   */
   private toMinutesFromMidnight(iso: string): number {
     if (!iso) return 0;
     const parts = iso.split('T');
@@ -207,8 +279,10 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
     return isFinite(mins) ? mins : 0;
   }
 
-  /** build a new ISO string by keeping the date from baseIso and
-   *  replacing the time with the given minutes-from-midnight
+  /**
+   * Build a new ISO date-time by combining the date portion of `baseIso` with
+   * a time derived from minutes-from-midnight. Seconds are zero-padded so
+   * emitted values are deterministic.
    */
   private minutesToIso(baseIso: string, mins: number): string {
     if (!baseIso) return baseIso;
@@ -220,15 +294,17 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
     return `${datePart}T${hh}:${mm}:00`;
   }
 
+  /** Restrict `v` between `min` and `max`. */
   private clamp(v: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, v));
   }
 
+  /** Snap minutes to the nearest `step` (defaults to 30-minute increments). */
   private snapToStep(mins: number, step = 30): number {
     return Math.round(mins / step) * step;
   }
 
-  /** Get working hours as minutes-from-midnight for a location */
+  /** Get working hours as minutes-from-midnight for a location. */
   private getWorkingBounds(
     location: string
   ): { start: number; end: number } | null {
@@ -248,33 +324,67 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
      Current-time line
      =========================== */
 
+  /**
+   * Kick off a periodic refresh of the "now" indicator so the vertical line
+   * tracks the current time while the view is open.
+   */
   private startNowTimer(): void {
     this.updateNowPercent();
     this.nowTimer = setInterval(() => this.updateNowPercent(), 60_000);
   }
 
+  /**
+   * Compute the percent-based position of the current time. If the displayed
+   * day is not today or the indicator is disabled, the marker is hidden by
+   * setting the value to -1.
+   */
   private updateNowPercent(): void {
     if (!this.showNowLine || !this.currentDayStart) {
-      this.nowPercent = -1;
+      this.setNowLine(-1);
       return;
     }
 
     const now = new Date();
     if (now.toDateString() !== this.currentDayStart.toDateString()) {
-      this.nowPercent = -1;
+      this.setNowLine(-1);
       return;
     }
 
     const minutes =
       now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
 
-    this.nowPercent = this.clamp((minutes / this.minutesInDay) * 100, 0, 100);
+    this.setNowLine(
+      this.clamp((minutes / this.minutesInDay) * 100, 0, 100)
+    );
+  }
+
+  /**
+   * Persist the clamped now-line percent and translate it to a CSS offset that
+   * ignores the fixed label column. Using a `calc` expression prevents movement
+   * on window resizes because the percentage scales with the timeline width
+   * only, not the entire container.
+   */
+  private setNowLine(percent: number): void {
+    this.nowPercent = percent;
+
+    if (percent < 0) {
+      this.nowLineLeft = '';
+      return;
+    }
+
+    const ratio = percent / 100;
+    this.nowLineLeft = `calc(var(--label-col-width) + (100% - var(--label-col-width)) * ${ratio})`;
   }
 
   /* ===========================
      Collision detection
      =========================== */
 
+  /**
+   * Determine whether the proposed interval for a slot collides with any other
+   * slot in the same location. Overlap is detected using half-open interval
+   * checks to mirror scheduling semantics.
+   */
   private hasConflict(
     slotId: string | number,
     location: string,
@@ -297,6 +407,10 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
      Global pointer listeners
      =========================== */
 
+  /**
+   * Listen to global pointermove/up events so drags continue to update even
+   * when the pointer leaves the slot or row bounds.
+   */
   private bindGlobalPointerEvents(): void {
     this.unlistenMove = this.renderer.listen(
       'window',
@@ -310,6 +424,7 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
     );
   }
 
+  /** Remove global pointer listeners to avoid leaks. */
   private cleanupGlobalPointerEvents(): void {
     if (this.unlistenMove) {
       this.unlistenMove();
@@ -325,6 +440,11 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
      Slot pointer-down from child
      =========================== */
 
+  /**
+   * Initialize drag/resizing when a pointer-down occurs on a slot child
+   * component. Stores the starting geometry and slot bounds so subsequent
+   * pointer moves can calculate deltas and live updates.
+   */
   onSlotPointerDownFromChild(
     payload: SlotPointerDownPayload,
     trackEl: HTMLElement
@@ -362,6 +482,11 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
      Window move / up handler – drag OR create
      =========================== */
 
+  /**
+   * Global pointer-move handler that drives two flows:
+   * 1) Live drag/resize updates of existing slots with snap-to-grid rounding.
+   * 2) Live visualization of a new slot being created on an empty track.
+   */
   private onWindowPointerMove(event: PointerEvent): void {
     // 1) dragging existing slot
     if (this.dragCtx) {
@@ -401,7 +526,7 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
       this.dragCtx.currentToMins = newTo;
 
       // live update ONLY the view model (no data mutation yet)
-      this.updateSlotViewModel(slotId, targetLoc, newFrom, newTo);
+      this.updateSlotViewModel(slotId, targetLoc, newFrom, newTo, false);
       return;
     }
 
@@ -428,6 +553,11 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
     }
   }
 
+  /**
+   * Complete either a drag/resize or a slot creation. Drops are validated
+   * against working hours and collisions; invalid drops revert and briefly
+   * animate, while valid drops persist and emit `slotChange`.
+   */
   private onWindowPointerUp(event: PointerEvent): void {
     // 1) finish drag/resize
     if (this.dragCtx) {
@@ -454,6 +584,7 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
       if (conflict || outOfWorking) {
         // revert completely to original state
         this.rebuild();
+        this.flashInvalid(slotId);
       } else {
         // commit new time & (possibly new) location into data
         this.commitDragToData(
@@ -530,6 +661,11 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
      New slot creation – track pointerdown
      =========================== */
 
+  /**
+   * Begin the slot-creation flow when the user drags on an empty portion of a
+   * track. A temporary selection element is appended for visual feedback until
+   * the pointer is released.
+   */
   onTrackPointerDown(
     event: PointerEvent,
     trackEl: HTMLElement,
@@ -582,7 +718,7 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
      Helpers
      =========================== */
 
-  /** Find location (row) under the given screen point */
+  /** Find location (row) under the given screen point. */
   private getLocationAtPoint(x: number, y: number): string | null {
     const el = document.elementFromPoint(x, y) as HTMLElement | null;
     if (!el) return null;
@@ -594,12 +730,17 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
     return loc || null;
   }
 
-  /** Update slot position & row in the view-model only (for live dragging) */
+  /**
+   * Update slot position & row in the in-memory view model. This enables live
+   * drag previews without mutating the underlying data until the drop is
+   * validated.
+   */
   private updateSlotViewModel(
     slotId: string | number,
     location: string,
     fromMins: number,
-    toMins: number
+    toMins: number,
+    invalid = false
   ): void {
     let vm: SlotViewModel | null = null;
 
@@ -615,8 +756,14 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
     }
     if (!vm) return;
 
-    const clampedFrom = this.clamp(fromMins, 0, this.minutesInDay);
-    const clampedTo = this.clamp(toMins, 0, this.minutesInDay);
+    const clampedFrom = this.snapToStep(
+      this.clamp(fromMins, 0, this.minutesInDay),
+      30
+    );
+    const clampedTo = this.snapToStep(
+      this.clamp(toMins, 0, this.minutesInDay),
+      30
+    );
     const span = Math.max(5, clampedTo - clampedFrom);
 
     const left = (clampedFrom / this.minutesInDay) * 100;
@@ -630,18 +777,74 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
       ...vm,
       left,
       width,
+      invalid,
     });
   }
 
-  /** Commit the final drag result into the underlying data */
+  /**
+   * Show a transient invalid animation on a slot after a reverted drop,
+   * clearing any previous flashes so only one slot shakes at once.
+   */
+  private flashInvalid(slotId: string | number): void {
+    this.clearInvalidFlags();
+
+    this.invalidFlashSlotId = slotId;
+    this.applyInvalidFlash();
+
+    if (this.invalidFlashTimer) {
+      clearTimeout(this.invalidFlashTimer);
+    }
+
+    this.invalidFlashTimer = setTimeout(() => {
+      this.invalidFlashSlotId = null;
+      this.invalidFlashTimer = null;
+      this.clearInvalidFlags();
+    }, 700);
+  }
+
+  /** Apply the transient invalid flag to the current flash target. */
+  private applyInvalidFlash(): void {
+    if (this.invalidFlashSlotId == null) return;
+
+    for (const loc of this.locations) {
+      const slot = this.slotsByLocation[loc]?.find(
+        (s) => s.id === this.invalidFlashSlotId
+      );
+      if (slot) {
+        slot.invalid = true;
+        break;
+      }
+    }
+  }
+
+  /** Remove invalid flags from every slot view model. */
+  private clearInvalidFlags(): void {
+    for (const loc of this.locations) {
+      const list = this.slotsByLocation[loc];
+      if (!list) continue;
+      for (const slot of list) {
+        if (slot.invalid) {
+          slot.invalid = false;
+        }
+      }
+    }
+  }
+
+  /** Commit the final drag result into the underlying data. */
   private commitDragToData(
     slotId: string | number,
     newLocation: string,
     newFrom: number,
     newTo: number
   ): void {
-    const fromClamped = this.clamp(newFrom, 0, this.minutesInDay);
-    const toClamped = this.clamp(newTo, 0, this.minutesInDay);
+    const fromClamped = this.snapToStep(
+      this.clamp(newFrom, 0, this.minutesInDay),
+      30
+    );
+    const toClamped = this.snapToStep(
+      this.clamp(newTo, 0, this.minutesInDay),
+      30
+    );
 
     const updated: CompactCalendarSlot[] = this.data.map((slot) => {
       if (slot.id !== slotId) return slot;
@@ -663,6 +866,7 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
     }
   }
 
+  /** Simple hash helper to deterministically pick a palette color. */
   private hashCode(str: string): number {
     let h = 0;
     for (let i = 0; i < str.length; i++) {
@@ -672,12 +876,17 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
     return h;
   }
 
+  /** Open slot details unless the same slot is already selected. */
   onSlotClick(slotFromCalendar: SlotViewModel): void {
-    console.log(slotFromCalendar);
+    if (this.selectedSlot?.id === slotFromCalendar.id) {
+      return;
+    }
+
     this.selectedSlot = { ...slotFromCalendar, color: slotFromCalendar.color };
   }
 
   // ak potrebuješ slot zavrieť z parenta:
+  /** Imperative API for parents to close the slot detail badge. */
   clearSlot(): void {
     this.selectedSlot = null;
   }

@@ -42,6 +42,7 @@
           *ngFor="let s of slotsByLocation[location] || []"
           [slot]="s"
           [location]="location"
+          [invalid]="s.invalid || false"
           (slotPointerDown)="onSlotPointerDownFromChild($event, track)"
           (slotClick)="onSlotClick(s)"
         ></app-compact-calendar-slot>
@@ -52,7 +53,7 @@
   <div
     class="time-identifier"
     *ngIf="showNowLine && nowPercent >= 0"
-    [style.left.%]="nowPercent"
+    [style.left]="nowLineLeft"
   ></div>
 
   <app-slot-detail

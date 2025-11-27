@@ -179,6 +179,19 @@
   z-index: 5;
 }
 
+.compact-calendar .time-identifier::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.9);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 2px #fff;
+}
+
 
 
 .compact-calendar .slot-preview {

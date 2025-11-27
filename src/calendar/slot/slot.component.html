@@ -4,6 +4,7 @@
   [style.width.%]="slot.width"
   [style.background]="slot.color"
   [attr.data-id]="slot.id"
+  [appSlotInvalid]="invalid"
   (pointerdown)="onPointerDown($event, 'move')"
   (click)="onClick($event)"
 >
