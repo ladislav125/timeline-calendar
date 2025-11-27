@@ -167,6 +167,10 @@
   z-index: 2;
 }
 
+.compact-calendar .slot-selection.invalid {
+  background: rgba(226, 76, 76, 0.3);
+}
+
 /* current time line */
 
 .compact-calendar .time-identifier {

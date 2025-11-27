@@ -605,7 +605,7 @@ export class CompactCalendarComponent
 
     // 2) creating new slot by dragging on empty track
     if (this.createCtx) {
-      const { trackEl, startMins, selectionEl } = this.createCtx;
+      const { trackEl, startMins, selectionEl, location } = this.createCtx;
       const rect = trackEl.getBoundingClientRect();
 
       const relX = this.clamp(event.clientX - rect.left, 0, rect.width);
@@ -617,11 +617,19 @@ export class CompactCalendarComponent
       const from = Math.min(startMins, curMins);
       const to = Math.max(startMins, curMins);
 
+      const bounds = this.getWorkingBounds(location);
+      const outOfWorking =
+        !!bounds && (from < bounds.start || to > bounds.end);
+      const conflict = this.hasConflict(null as any, location, from, to);
+
+      const invalid = conflict || outOfWorking;
+
       const leftPct = (from / this.minutesInDay) * 100;
       const widthPct = ((to - from) / this.minutesInDay) * 100;
 
       selectionEl.style.left = `${leftPct}%`;
       selectionEl.style.width = `${widthPct}%`;
+      selectionEl.classList.toggle('invalid', invalid);
       return;
     }
   }
@@ -767,7 +775,6 @@ export class CompactCalendarComponent
     selection.style.top = '7px';
     selection.style.height = '44px';
     selection.style.borderRadius = '12px';
-    selection.style.background = 'rgba(59,130,246,0.25)';
     selection.style.pointerEvents = 'none';
     selection.style.left = '0';
     selection.style.width = '0';
