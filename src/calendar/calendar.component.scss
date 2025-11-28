@@ -46,13 +46,14 @@
   position: relative;
   flex: 1;
   height: 44px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .compact-calendar .cal-head .hours {
   position: relative;
   width: 100%;
   height: 100%;
+  overflow: visible;
 }
 
 /* Draw all vertical lines via background:
@@ -99,6 +100,14 @@
   transform: translateX(-50%);
   font-size: 11px;
   color: #4b5563;
+}
+
+.compact-calendar .cal-head .hlabel:first-child {
+  transform: translateX(0);
+}
+
+.compact-calendar .cal-head .hlabel:last-child {
+  transform: translateX(-100%);
 }
 
 /* BODY */
