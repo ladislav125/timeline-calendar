@@ -38,9 +38,9 @@ interface InternalDragCtx {
 })
 /**
  * Standalone directive that wires low-level pointer handling for a slot element
- * and emits granular drag progress/finalization events. This file mirrors the
- * calendar component's logic but is not currently wired in the template; it is
- * preserved for parity with earlier implementations.
+ * and emits granular drag lifecycle events to the host calendar. The directive
+ * is responsible purely for pointer math (snap-to-grid, min span enforcement,
+ * cross-row detection) and leaves validation/commit logic to the parent.
  */
 export class SlotDragDirective implements OnDestroy {
   /** Slot view model of this element. */
@@ -54,6 +54,9 @@ export class SlotDragDirective implements OnDestroy {
 
   /** Snap step in minutes. */
   @Input() snapStep = 30;
+
+  /** Emitted immediately after pointer-down captures the drag context. */
+  @Output() dragStart = new EventEmitter<SlotDragEvent>();
 
   /** Emitted on every pointer move with live position. */
   @Output() dragMove = new EventEmitter<SlotDragEvent>();
@@ -121,6 +124,14 @@ export class SlotDragDirective implements OnDestroy {
       currentFromMins: startFrom,
       currentToMins: startTo,
     };
+
+    this.dragStart.emit({
+      slotId: this.slot.id,
+      location: this.slotLocation,
+      type,
+      fromMins: startFrom,
+      toMins: startTo,
+    });
 
     this.attachWindowListeners();
   }

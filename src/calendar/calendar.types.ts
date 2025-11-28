@@ -38,27 +38,3 @@ export type SlotViewModel = {
 
 /** Drag intent for an interaction. */
 export type DragType = 'move' | 'resize-start' | 'resize-end';
-
-/**
- * Internal drag bookkeeping used to compute deltas during a pointer session.
- */
-export type DragContext = {
-  slotId: string | number;
-  origLocation: string;
-  currentLocation: string;
-  type: DragType;
-  trackRect: DOMRect;
-  startX: number;
-  startFromMins: number;
-  startToMins: number;
-  currentFromMins: number;
-  currentToMins: number;
-};
-
-/** Event payload emitted when a slot begins a pointer interaction. */
-export type SlotPointerDownPayload = {
-  event: PointerEvent;
-  slot: SlotViewModel;
-  location: string;
-  type: DragType;
-};

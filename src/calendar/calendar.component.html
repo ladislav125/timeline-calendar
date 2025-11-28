@@ -43,7 +43,10 @@
           [slot]="s"
           [location]="location"
           [invalid]="s.invalid || false"
-          (slotPointerDown)="onSlotPointerDownFromChild($event, track)"
+          [minutesInDay]="minutesInDay"
+          (slotDragStart)="onSlotDragStart()"
+          (slotDragMove)="onSlotDragMove($event)"
+          (slotDragEnd)="onSlotDragEnd($event)"
           (slotClick)="onSlotClick(s)"
         ></app-compact-calendar-slot>
       </div>

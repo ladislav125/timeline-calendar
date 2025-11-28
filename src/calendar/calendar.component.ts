@@ -17,15 +17,13 @@ import {
 import { CommonModule } from '@angular/common';
 import {
   CompactCalendarSlot,
-  DragContext,
-  DragType,
-  SlotPointerDownPayload,
   SlotViewModel,
   WorkingHoursMap,
 } from './calendar.types';
 import { palette } from './calendar.consts';
 import { CalendarSlotComponent } from './slot/slot.component';
 import { SlotDetailComponent } from './slot-detail/slot-detail.component';
+import { SlotDragEvent } from './slot/slot.directive';
 import { Subscription } from 'rxjs';
 
 /**
@@ -104,9 +102,6 @@ export class CompactCalendarComponent
   /** Interval ID used to refresh the moving "now" indicator. */
   private nowTimer: any;
 
-  /** Drag/resizing context captured when pointer-down begins on a slot. */
-  private dragCtx: DragContext | null = null;
-
   /**
    * Tracks which slot should temporarily show the invalid animation after a
    * reverted drop, along with the timeout that clears the state.
@@ -120,7 +115,7 @@ export class CompactCalendarComponent
   private unlistenUp: (() => void) | null = null;
 
   /** Constant representing the total minutes contained in one day. */
-  private readonly minutesInDay = 24 * 60;
+  readonly minutesInDay = 24 * 60;
 
   /** Slot currently opened in the detail badge. */
   selectedSlot: SlotViewModel | null = null;
@@ -523,45 +518,36 @@ export class CompactCalendarComponent
   }
 
   /* ===========================
-     Slot pointer-down from child
+     Drag lifecycle from slot directive
      =========================== */
 
-  /**
-   * Initialize drag/resizing when a pointer-down occurs on a slot child
-   * component. Stores the starting geometry and slot bounds so subsequent
-   * pointer moves can calculate deltas and live updates.
-   */
-  onSlotPointerDownFromChild(
-    payload: SlotPointerDownPayload,
-    trackEl: HTMLElement
-  ): void {
-    const { event, slot: vm, location, type } = payload;
-
-    event.stopPropagation();
-    event.preventDefault();
-
-    const trackRect = trackEl.getBoundingClientRect();
-    const fromM = this.toMinutesFromMidnight(vm.raw.dateTimeFrom);
-    const toM = this.toMinutesFromMidnight(vm.raw.dateTimeTo);
-
-    const startFrom = this.clamp(fromM, 0, this.minutesInDay);
-    const startTo = this.clamp(toM, 0, this.minutesInDay);
-
-    this.dragCtx = {
-      slotId: vm.id,
-      origLocation: location,
-      currentLocation: location,
-      type,
-      trackRect,
-      startX: event.clientX,
-      startFromMins: startFrom,
-      startToMins: startTo,
-      currentFromMins: startFrom,
-      currentToMins: startTo,
-    };
-
-    // cancel any in-progress create
+  /** Clear any in-progress creation when a drag begins on an existing slot. */
+  onSlotDragStart(): void {
     this.createCtx = null;
+  }
+
+  /** Live updates from the drag directive to preview the slot move/resize. */
+  onSlotDragMove(event: SlotDragEvent): void {
+    const { slotId, location, fromMins, toMins } = event;
+    this.updateSlotViewModel(slotId, location, fromMins, toMins, false);
+  }
+
+  /** Validate and commit (or revert) a completed drag operation. */
+  onSlotDragEnd(event: SlotDragEvent): void {
+    const { slotId, location, fromMins, toMins } = event;
+
+    const bounds = this.getWorkingBounds(location);
+    const outOfWorking = !!bounds && (fromMins < bounds.start || toMins > bounds.end);
+
+    const conflict = this.hasConflict(slotId, location, fromMins, toMins);
+
+    if (conflict || outOfWorking) {
+      this.rebuild();
+      this.flashInvalid(slotId);
+      return;
+    }
+
+    this.commitDragToData(slotId, location, fromMins, toMins);
   }
 
   /* ===========================
@@ -570,53 +556,10 @@ export class CompactCalendarComponent
 
   /**
    * Global pointer-move handler that drives two flows:
-   * 1) Live drag/resize updates of existing slots with snap-to-grid rounding.
-   * 2) Live visualization of a new slot being created on an empty track.
+   * 1) Live visualization of a new slot being created on an empty track.
    */
   private onWindowPointerMove(event: PointerEvent): void {
-    // 1) dragging existing slot
-    if (this.dragCtx) {
-      const { trackRect, type, startX, startFromMins, startToMins, slotId } =
-        this.dragCtx;
-
-      const dx = event.clientX - startX;
-      const deltaMinutes = (dx / trackRect.width) * this.minutesInDay;
-
-      let newFrom = startFromMins;
-      let newTo = startToMins;
-      const minSpan = 30; // minimum slot length in minutes
-
-      if (type === 'move') {
-        const span = startToMins - startFromMins;
-        let rawFrom = startFromMins + deltaMinutes;
-        rawFrom = this.clamp(rawFrom, 0, this.minutesInDay - span);
-        newFrom = this.snapToStep(rawFrom, 30);
-        newTo = newFrom + span;
-      } else if (type === 'resize-start') {
-        let rawFrom = startFromMins + deltaMinutes;
-        rawFrom = this.clamp(rawFrom, 0, startToMins - minSpan);
-        newFrom = this.snapToStep(rawFrom, 30);
-      } else if (type === 'resize-end') {
-        let rawTo = startToMins + deltaMinutes;
-        rawTo = this.clamp(rawTo, startFromMins + minSpan, this.minutesInDay);
-        newTo = this.snapToStep(rawTo, 30);
-      }
-
-      // which row is under the pointer? (for live move between rows)
-      const targetLoc =
-        this.getLocationAtPoint(event.clientX, event.clientY) ??
-        this.dragCtx.currentLocation;
-
-      this.dragCtx.currentLocation = targetLoc;
-      this.dragCtx.currentFromMins = newFrom;
-      this.dragCtx.currentToMins = newTo;
-
-      // live update ONLY the view model (no data mutation yet)
-      this.updateSlotViewModel(slotId, targetLoc, newFrom, newTo, false);
-      return;
-    }
-
-    // 2) creating new slot by dragging on empty track
+    // creating new slot by dragging on empty track
     if (this.createCtx) {
       const { trackEl, startMins, selectionEl, location } = this.createCtx;
       const rect = trackEl.getBoundingClientRect();
@@ -654,52 +597,12 @@ export class CompactCalendarComponent
   }
 
   /**
-   * Complete either a drag/resize or a slot creation. Drops are validated
+   * Complete a slot creation. Drops are validated
    * against working hours and collisions; invalid drops revert and briefly
    * animate, while valid drops persist and emit `slotChange`.
    */
   private onWindowPointerUp(event: PointerEvent): void {
-    // 1) finish drag/resize
-    if (this.dragCtx) {
-      const { slotId, currentLocation, currentFromMins, currentToMins } =
-        this.dragCtx;
-
-      const targetLoc =
-        this.getLocationAtPoint(event.clientX, event.clientY) ||
-        currentLocation;
-
-      const bounds = this.getWorkingBounds(targetLoc);
-
-      const outOfWorking =
-        !!bounds &&
-        (currentFromMins < bounds.start || currentToMins > bounds.end);
-
-      const conflict = this.hasConflict(
-        slotId,
-        targetLoc,
-        currentFromMins,
-        currentToMins
-      );
-
-      if (conflict || outOfWorking) {
-        // revert completely to original state
-        this.rebuild();
-        this.flashInvalid(slotId);
-      } else {
-        // commit new time & (possibly new) location into data
-        this.commitDragToData(
-          slotId,
-          targetLoc,
-          currentFromMins,
-          currentToMins
-        );
-      }
-
-      this.dragCtx = null;
-      return;
-    }
-
-    // 2) finish creation
+    // finish creation
     if (this.createCtx) {
       const { trackEl, location, startMins, selectionEl } = this.createCtx;
       const rect = trackEl.getBoundingClientRect();
@@ -814,9 +717,6 @@ export class CompactCalendarComponent
       startMins,
       selectionEl: selection,
     };
-
-    // cancel any in-progress drag
-    this.dragCtx = null;
   }
 
   /* ===========================

@@ -5,7 +5,14 @@
   [style.background]="slot.color"
   [attr.data-id]="slot.id"
   [appSlotInvalid]="invalid"
-  (pointerdown)="onPointerDown($event, 'move')"
+  [appSlotDrag]="slot"
+  [slotLocation]="location"
+  [minutesInDay]="minutesInDay"
+  [snapStep]="snapStep"
+  (dragStart)="onDragStart($event)"
+  (dragMove)="onDragMove($event)"
+  (dragEnd)="onDragEnd($event)"
+  (pointerdown)="onPointerDown()"
   (click)="onClick($event)"
 >
   <div class="tn" [title]="slot.tn">{{ slot.tn }}</div>
@@ -13,11 +20,9 @@
   <div
     class="h-left"
     data-h="L"
-    (pointerdown)="onPointerDown($event, 'resize-start')"
   ></div>
   <div
     class="h-right"
     data-h="R"
-    (pointerdown)="onPointerDown($event, 'resize-end')"
   ></div>
 </div>
