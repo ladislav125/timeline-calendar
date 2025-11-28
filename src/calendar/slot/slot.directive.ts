@@ -10,7 +10,14 @@ import {
 } from '@angular/core';
 import { DragType, SlotViewModel } from '../calendar.types';
 
-/** Event payload surfaced on drag move/end to the host component. */
+/**
+ * Event payload surfaced on drag move/end to the host component.
+ *
+ * Consumers receive the slot id, location, drag type, and the current minutes
+ * from/to snapshot so they can update the in-progress view model or finalize a
+ * drop. The directive does not enforce calendar business rules—those stay in
+ * the parent component.
+ */
 export type SlotDragEvent = {
   slotId: string | number;
   location: string;
@@ -19,7 +26,13 @@ export type SlotDragEvent = {
   toMins: number;
 };
 
-/** Internal bookkeeping for an active drag interaction. */
+/**
+ * Internal bookkeeping for an active drag interaction.
+ *
+ * This context caches measurements and the original slot times so pointer move
+ * math can be performed without repeatedly reading from the DOM or the view
+ * model. The state is reset on pointerup.
+ */
 interface InternalDragCtx {
   type: DragType;
   slotId: string | number;
@@ -35,12 +48,23 @@ interface InternalDragCtx {
 
 @Directive({
   selector: '[appSlotDrag]',
+  standalone: true,
 })
 /**
  * Standalone directive that wires low-level pointer handling for a slot element
- * and emits granular drag lifecycle events to the host calendar. The directive
- * is responsible purely for pointer math (snap-to-grid, min span enforcement,
- * cross-row detection) and leaves validation/commit logic to the parent.
+ * and emits granular drag lifecycle events to the host calendar.
+ *
+ * Responsibilities:
+ * - Detect whether the user initiated a move or resize (left/right handle).
+ * - Track pointer movement against the timeline width and convert pixels to
+ *   minutes-from-midnight, snapping to the provided step.
+ * - Enforce a minimum span while resizing and clamp to the day's bounds.
+ * - Detect the calendar row under the pointer so cross-row moves are possible.
+ * - Emit `dragStart`, `dragMove`, and `dragEnd` so the calendar component can
+ *   handle validation and state updates.
+ *
+ * The directive intentionally avoids business logic like conflict detection or
+ * persistence; it only surfaces raw position data for the host to interpret.
  */
 export class SlotDragDirective implements OnDestroy {
   /** Slot view model of this element. */
@@ -101,6 +125,15 @@ export class SlotDragDirective implements OnDestroy {
     ev.stopPropagation();
     ev.preventDefault();
 
+    // Capture the pointer so subsequent moves are consistently delivered even
+    // when the cursor leaves the slot during a drag. This also avoids the
+    // browser initiating native text selection while resizing.
+    try {
+      this.el.nativeElement.setPointerCapture(ev.pointerId);
+    } catch {
+      // Some environments may not support pointer capture; continue gracefully.
+    }
+
     const trackEl = this.findTrackElement();
     if (!trackEl) return;
 
@@ -138,7 +171,13 @@ export class SlotDragDirective implements OnDestroy {
 
   /* ============ WINDOW POINTER MOVE / UP ============ */
 
-  /** Track pointer movement and emit live drag progress. */
+  /**
+   * Track pointer movement and emit live drag progress.
+   *
+   * The handler derives delta minutes from the track width, applies snapping
+   * and clamping for move/resize variants, and surfaces the row currently under
+   * the pointer so the host can provide cross-row previews.
+   */
   private onWindowPointerMove = (ev: PointerEvent) => {
     if (!this.dragCtx) return;
 
@@ -192,7 +231,13 @@ export class SlotDragDirective implements OnDestroy {
     });
   };
 
-  /** Emit the final drag state and tear down listeners. */
+  /**
+   * Emit the final drag state and tear down listeners.
+   *
+   * On release, the directive reports the latest minutes and pointer row to the
+   * host so it can validate and commit the move/resize. Global listeners are
+   * removed to avoid leaks.
+   */
   private onWindowPointerUp = (ev: PointerEvent) => {
     if (!this.dragCtx) return;
 
@@ -212,6 +257,12 @@ export class SlotDragDirective implements OnDestroy {
 
     this.dragCtx = null;
     this.detachWindowListeners();
+
+    try {
+      this.el.nativeElement.releasePointerCapture(ev.pointerId);
+    } catch {
+      /* noop */
+    }
   };
 
   /* ============ HELPERS ============ */
@@ -228,6 +279,13 @@ export class SlotDragDirective implements OnDestroy {
     window.removeEventListener('pointerup', this.onWindowPointerUp);
   }
 
+  /**
+   * Find the row track element that owns this slot.
+   *
+   * The host is the slot element itself; the nearest `.rtrack` ancestor defines
+   * the horizontal rail used for width/position calculations. Null is returned
+   * if the slot is detached from the DOM (should not happen during normal use).
+   */
   private findTrackElement(): HTMLElement | null {
     // .slot is host; track is closest .rtrack up the tree
     return this.el.nativeElement.closest('.rtrack') as HTMLElement | null;
