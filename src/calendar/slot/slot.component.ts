@@ -1,14 +1,33 @@
+<<<<<<< codex/fix-calendar-time-slot-snapping-issue-wy1yxj
 import {
+=======
+import {
+>>>>>>> main
   Component,
   EventEmitter,
   Input,
   Output,
   ViewEncapsulation,
+<<<<<<< codex/fix-calendar-time-slot-snapping-issue-wy1yxj
 } from '@angular/core';
 import { SlotViewModel } from '../calendar.types';
 import { SlotInvalidDirective } from './slot-invalid.directive';
 import { SlotDragDirective, SlotDragEvent } from './slot.directive';
 
+=======
+} from '@angular/core';
+import { DragType, SlotViewModel } from '../calendar.types';
+import { SlotInvalidDirective } from './slot-invalid.directive';
+
+/** Payload used to bubble pointer-down interactions to the calendar host. */
+export interface SlotPointerDownPayload {
+  event: PointerEvent;
+  slot: SlotViewModel;
+  location: string;
+  type: DragType;
+}
+
+>>>>>>> main
 @Component({
   selector: 'app-compact-calendar-slot',
   standalone: true,
