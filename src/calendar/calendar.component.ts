@@ -9,19 +9,22 @@ import {
   Output,
   EventEmitter,
   Renderer2,
+  ElementRef,
+  ViewChildren,
+  QueryList,
+  AfterViewInit,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import {
   CompactCalendarSlot,
-  DragContext,
-  DragType,
-  SlotPointerDownPayload,
   SlotViewModel,
   WorkingHoursMap,
 } from './calendar.types';
 import { palette } from './calendar.consts';
 import { CalendarSlotComponent } from './slot/slot.component';
 import { SlotDetailComponent } from './slot-detail/slot-detail.component';
+import { SlotDragEvent } from './slot/slot.directive';
+import { Subscription } from 'rxjs';
 
 /**
  * Internal state captured when the user drags on an empty row to create a brand
@@ -56,7 +59,9 @@ interface CreateContext {
  * - emits `slotChange` whenever the user commits a valid drag, resize, or
  *   creation so the host application can persist the change
  */
-export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
+export class CompactCalendarComponent
+  implements OnInit, OnChanges, OnDestroy, AfterViewInit
+{
   /** Texts shown on the left */
   @Input() dateLabel = '';
   @Input() timeLabel = '06:00 - 24:00';
@@ -84,13 +89,18 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
 
   /** Current "now" indicator position (0–100) or -1 when hidden. */
   nowPercent = -1;
+  /** Calculated CSS left offset that anchors the now-line to the timeline only. */
+  nowLineLeft = '';
+  /** Track elements used to measure actual timeline width for the now-line. */
+  @ViewChildren('track') trackEls!: QueryList<ElementRef<HTMLElement>>;
+  /** Subscription to track list changes for recalculating the now marker. */
+  private trackChangeSub: Subscription | null = null;
+  /** Window resize listener that realigns the now marker as widths change. */
+  private unlistenResize: (() => void) | null = null;
   /** Start-of-day marker for the current dataset, used for "now" detection. */
   private currentDayStart: Date | null = null;
   /** Interval ID used to refresh the moving "now" indicator. */
   private nowTimer: any;
-
-  /** Drag/resizing context captured when pointer-down begins on a slot. */
-  private dragCtx: DragContext | null = null;
 
   /**
    * Tracks which slot should temporarily show the invalid animation after a
@@ -105,13 +115,26 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
   private unlistenUp: (() => void) | null = null;
 
   /** Constant representing the total minutes contained in one day. */
-  private readonly minutesInDay = 24 * 60;
+  readonly minutesInDay = 24 * 60;
 
   /** Slot currently opened in the detail badge. */
   selectedSlot: SlotViewModel | null = null;
   selectedSlotTimeRange = '';
 
-  constructor(private renderer: Renderer2) {}
+  /**
+   * Warning message shown when a slot creation attempt is invalid due to
+   * collisions or non-working hours. Displayed as a red badge similar to the
+   * standard slot detail card.
+   */
+  creationWarning: { reason: 'conflict' | 'nonwork'; message: string } | null =
+    null;
+  /** Timeout that auto-hides the creation warning badge. */
+  private creationWarningTimer: any = null;
+
+  constructor(
+    private renderer: Renderer2,
+    private hostEl: ElementRef<HTMLElement>
+  ) {}
 
   /**
    * Normalize incoming data, prime the moving "now" indicator, and install
@@ -122,6 +145,23 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
     this.rebuild();
     this.startNowTimer();
     this.bindGlobalPointerEvents();
+  }
+
+  /**
+   * Wait for the view to render so track widths are available for measuring the
+   * now-line offset, then subscribe to width-affecting events such as DOM
+   * changes and window resizes to keep the marker aligned.
+   */
+  ngAfterViewInit(): void {
+    this.realignNowLine();
+
+    this.trackChangeSub = this.trackEls.changes.subscribe(() =>
+      this.realignNowLine()
+    );
+
+    this.unlistenResize = this.renderer.listen('window', 'resize', () =>
+      this.realignNowLine()
+    );
   }
 
   /**
@@ -143,7 +183,18 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
     if (this.invalidFlashTimer) {
       clearTimeout(this.invalidFlashTimer);
     }
+    if (this.creationWarningTimer) {
+      clearTimeout(this.creationWarningTimer);
+    }
     this.cleanupGlobalPointerEvents();
+
+    if (this.trackChangeSub) {
+      this.trackChangeSub.unsubscribe();
+    }
+
+    if (this.unlistenResize) {
+      this.unlistenResize();
+    }
   }
 
   /* ===========================
@@ -338,20 +389,72 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
    */
   private updateNowPercent(): void {
     if (!this.showNowLine || !this.currentDayStart) {
-      this.nowPercent = -1;
+      this.setNowLine(-1);
       return;
     }
 
     const now = new Date();
     if (now.toDateString() !== this.currentDayStart.toDateString()) {
-      this.nowPercent = -1;
+      this.setNowLine(-1);
       return;
     }
 
     const minutes =
       now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
 
-    this.nowPercent = this.clamp((minutes / this.minutesInDay) * 100, 0, 100);
+    this.setNowLine(
+      this.clamp((minutes / this.minutesInDay) * 100, 0, 100)
+    );
+  }
+
+  /**
+   * Persist the clamped now-line percent and translate it to a CSS offset that
+   * ignores the fixed label column. Using a `calc` expression prevents movement
+   * on window resizes because the percentage scales with the timeline width
+   * only, not the entire container.
+   */
+  private setNowLine(percent: number): void {
+    this.nowPercent = percent;
+
+    if (percent < 0) {
+      this.nowLineLeft = '';
+      return;
+    }
+
+    this.nowLineLeft = this.computeNowLineLeft(percent);
+  }
+
+  /**
+   * Recompute the now-line's left offset without changing the stored percent.
+   * This is invoked when layout changes (e.g., window resize or scrollbar
+   * shifts) to keep the marker aligned with the timeline grid.
+   */
+  private realignNowLine(): void {
+    if (this.nowPercent < 0) {
+      return;
+    }
+
+    this.nowLineLeft = this.computeNowLineLeft(this.nowPercent);
+  }
+
+  /**
+   * Translate a percent-of-day value to a concrete left CSS value. When track
+   * elements are available, their measured widths (minus the label column and
+   * any scrollbars) are used for pixel-perfect alignment. Otherwise, the
+   * component falls back to the percentage-based calc used previously.
+   */
+  private computeNowLineLeft(percent: number): string {
+    const ratio = percent / 100;
+    const trackEl = this.trackEls?.first?.nativeElement;
+    const hostRect = this.hostEl.nativeElement.getBoundingClientRect();
+
+    if (trackEl) {
+      const trackRect = trackEl.getBoundingClientRect();
+      const leftPx = trackRect.left - hostRect.left + trackRect.width * ratio;
+      return `${leftPx}px`;
+    }
+
+    return `calc(var(--label-col-width) + (100% - var(--label-col-width)) * ${ratio})`;
   }
 
   /* ===========================
@@ -415,45 +518,36 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
   }
 
   /* ===========================
-     Slot pointer-down from child
+     Drag lifecycle from slot directive
      =========================== */
 
-  /**
-   * Initialize drag/resizing when a pointer-down occurs on a slot child
-   * component. Stores the starting geometry and slot bounds so subsequent
-   * pointer moves can calculate deltas and live updates.
-   */
-  onSlotPointerDownFromChild(
-    payload: SlotPointerDownPayload,
-    trackEl: HTMLElement
-  ): void {
-    const { event, slot: vm, location, type } = payload;
-
-    event.stopPropagation();
-    event.preventDefault();
-
-    const trackRect = trackEl.getBoundingClientRect();
-    const fromM = this.toMinutesFromMidnight(vm.raw.dateTimeFrom);
-    const toM = this.toMinutesFromMidnight(vm.raw.dateTimeTo);
-
-    const startFrom = this.clamp(fromM, 0, this.minutesInDay);
-    const startTo = this.clamp(toM, 0, this.minutesInDay);
-
-    this.dragCtx = {
-      slotId: vm.id,
-      origLocation: location,
-      currentLocation: location,
-      type,
-      trackRect,
-      startX: event.clientX,
-      startFromMins: startFrom,
-      startToMins: startTo,
-      currentFromMins: startFrom,
-      currentToMins: startTo,
-    };
-
-    // cancel any in-progress create
+  /** Clear any in-progress creation when a drag begins on an existing slot. */
+  onSlotDragStart(): void {
     this.createCtx = null;
+  }
+
+  /** Live updates from the drag directive to preview the slot move/resize. */
+  onSlotDragMove(event: SlotDragEvent): void {
+    const { slotId, location, fromMins, toMins } = event;
+    this.updateSlotViewModel(slotId, location, fromMins, toMins, false);
+  }
+
+  /** Validate and commit (or revert) a completed drag operation. */
+  onSlotDragEnd(event: SlotDragEvent): void {
+    const { slotId, location, fromMins, toMins } = event;
+
+    const bounds = this.getWorkingBounds(location);
+    const outOfWorking = !!bounds && (fromMins < bounds.start || toMins > bounds.end);
+
+    const conflict = this.hasConflict(slotId, location, fromMins, toMins);
+
+    if (conflict || outOfWorking) {
+      this.rebuild();
+      this.flashInvalid(slotId);
+      return;
+    }
+
+    this.commitDragToData(slotId, location, fromMins, toMins);
   }
 
   /* ===========================
@@ -462,55 +556,12 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
 
   /**
    * Global pointer-move handler that drives two flows:
-   * 1) Live drag/resize updates of existing slots with snap-to-grid rounding.
-   * 2) Live visualization of a new slot being created on an empty track.
+   * 1) Live visualization of a new slot being created on an empty track.
    */
   private onWindowPointerMove(event: PointerEvent): void {
-    // 1) dragging existing slot
-    if (this.dragCtx) {
-      const { trackRect, type, startX, startFromMins, startToMins, slotId } =
-        this.dragCtx;
-
-      const dx = event.clientX - startX;
-      const deltaMinutes = (dx / trackRect.width) * this.minutesInDay;
-
-      let newFrom = startFromMins;
-      let newTo = startToMins;
-      const minSpan = 30; // minimum slot length in minutes
-
-      if (type === 'move') {
-        const span = startToMins - startFromMins;
-        let rawFrom = startFromMins + deltaMinutes;
-        rawFrom = this.clamp(rawFrom, 0, this.minutesInDay - span);
-        newFrom = this.snapToStep(rawFrom, 30);
-        newTo = newFrom + span;
-      } else if (type === 'resize-start') {
-        let rawFrom = startFromMins + deltaMinutes;
-        rawFrom = this.clamp(rawFrom, 0, startToMins - minSpan);
-        newFrom = this.snapToStep(rawFrom, 30);
-      } else if (type === 'resize-end') {
-        let rawTo = startToMins + deltaMinutes;
-        rawTo = this.clamp(rawTo, startFromMins + minSpan, this.minutesInDay);
-        newTo = this.snapToStep(rawTo, 30);
-      }
-
-      // which row is under the pointer? (for live move between rows)
-      const targetLoc =
-        this.getLocationAtPoint(event.clientX, event.clientY) ??
-        this.dragCtx.currentLocation;
-
-      this.dragCtx.currentLocation = targetLoc;
-      this.dragCtx.currentFromMins = newFrom;
-      this.dragCtx.currentToMins = newTo;
-
-      // live update ONLY the view model (no data mutation yet)
-      this.updateSlotViewModel(slotId, targetLoc, newFrom, newTo, false);
-      return;
-    }
-
-    // 2) creating new slot by dragging on empty track
+    // creating new slot by dragging on empty track
     if (this.createCtx) {
-      const { trackEl, startMins, selectionEl } = this.createCtx;
+      const { trackEl, startMins, selectionEl, location } = this.createCtx;
       const rect = trackEl.getBoundingClientRect();
 
       const relX = this.clamp(event.clientX - rect.left, 0, rect.width);
@@ -522,62 +573,36 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
       const from = Math.min(startMins, curMins);
       const to = Math.max(startMins, curMins);
 
+      const bounds = this.getWorkingBounds(location);
+      const outOfWorking =
+        !!bounds && (from < bounds.start || to > bounds.end);
+      const conflict = this.hasConflict(null as any, location, from, to);
+
+      const invalid = conflict || outOfWorking;
+
       const leftPct = (from / this.minutesInDay) * 100;
       const widthPct = ((to - from) / this.minutesInDay) * 100;
 
       selectionEl.style.left = `${leftPct}%`;
       selectionEl.style.width = `${widthPct}%`;
+      selectionEl.classList.toggle('invalid', invalid);
+
+      if (invalid) {
+        this.showCreationWarning(conflict ? 'conflict' : 'nonwork');
+      } else {
+        this.clearCreationWarning();
+      }
       return;
     }
   }
 
   /**
-   * Complete either a drag/resize or a slot creation. Drops are validated
+   * Complete a slot creation. Drops are validated
    * against working hours and collisions; invalid drops revert and briefly
    * animate, while valid drops persist and emit `slotChange`.
    */
   private onWindowPointerUp(event: PointerEvent): void {
-    // 1) finish drag/resize
-    if (this.dragCtx) {
-      const { slotId, currentLocation, currentFromMins, currentToMins } =
-        this.dragCtx;
-
-      const targetLoc =
-        this.getLocationAtPoint(event.clientX, event.clientY) ||
-        currentLocation;
-
-      const bounds = this.getWorkingBounds(targetLoc);
-
-      const outOfWorking =
-        !!bounds &&
-        (currentFromMins < bounds.start || currentToMins > bounds.end);
-
-      const conflict = this.hasConflict(
-        slotId,
-        targetLoc,
-        currentFromMins,
-        currentToMins
-      );
-
-      if (conflict || outOfWorking) {
-        // revert completely to original state
-        this.rebuild();
-        this.flashInvalid(slotId);
-      } else {
-        // commit new time & (possibly new) location into data
-        this.commitDragToData(
-          slotId,
-          targetLoc,
-          currentFromMins,
-          currentToMins
-        );
-      }
-
-      this.dragCtx = null;
-      return;
-    }
-
-    // 2) finish creation
+    // finish creation
     if (this.createCtx) {
       const { trackEl, location, startMins, selectionEl } = this.createCtx;
       const rect = trackEl.getBoundingClientRect();
@@ -601,11 +626,13 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
 
       const bounds = this.getWorkingBounds(location);
       if (bounds && (from < bounds.start || to > bounds.end)) {
+        this.showCreationWarning('nonwork');
         return;
       }
 
       const conflict = this.hasConflict(null as any, location, from, to);
       if (conflict) {
+        this.showCreationWarning('conflict');
         return;
       }
 
@@ -631,6 +658,8 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
       this.rebuild();
       this.slotChange.emit(newSlot);
 
+      this.clearCreationWarning();
+
       return;
     }
   }
@@ -650,6 +679,8 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
     location: string
   ): void {
     if (event.button !== 0) return;
+
+    this.clearCreationWarning();
 
     // if clicked on a slot, ignore (slot has its own handler)
     const targetSlot = (event.target as HTMLElement | null)?.closest('.slot');
@@ -672,7 +703,6 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
     selection.style.top = '7px';
     selection.style.height = '44px';
     selection.style.borderRadius = '12px';
-    selection.style.background = 'rgba(59,130,246,0.25)';
     selection.style.pointerEvents = 'none';
     selection.style.left = '0';
     selection.style.width = '0';
@@ -687,9 +717,6 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
       startMins,
       selectionEl: selection,
     };
-
-    // cancel any in-progress drag
-    this.dragCtx = null;
   }
 
   /* ===========================
@@ -806,6 +833,37 @@ export class CompactCalendarComponent implements OnInit, OnChanges, OnDestroy {
         }
       }
     }
+  }
+
+  /**
+   * Surface a warning badge when slot creation is blocked by conflicts or
+   * non-working hours. The badge auto-hides after a short delay.
+   */
+  private showCreationWarning(reason: 'conflict' | 'nonwork'): void {
+    const message =
+      reason === 'conflict'
+        ? 'Cannot create a slot here because it overlaps an existing slot.'
+        : 'Cannot create a slot here because it falls outside working hours.';
+
+    this.creationWarning = { reason, message };
+
+    if (this.creationWarningTimer) {
+      clearTimeout(this.creationWarningTimer);
+    }
+
+    this.creationWarningTimer = setTimeout(() => {
+      this.creationWarning = null;
+      this.creationWarningTimer = null;
+    }, 2500);
+  }
+
+  /** Hide the creation warning and clear any pending timeout. */
+  private clearCreationWarning(): void {
+    if (this.creationWarningTimer) {
+      clearTimeout(this.creationWarningTimer);
+      this.creationWarningTimer = null;
+    }
+    this.creationWarning = null;
   }
 
   /** Commit the final drag result into the underlying data. */

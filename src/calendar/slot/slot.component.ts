@@ -1,9 +1,20 @@
+<<<<<<< codex/fix-calendar-time-slot-snapping-issue-wy1yxj
 import {
+=======
+import {
+>>>>>>> main
   Component,
   EventEmitter,
   Input,
   Output,
   ViewEncapsulation,
+<<<<<<< codex/fix-calendar-time-slot-snapping-issue-wy1yxj
+} from '@angular/core';
+import { SlotViewModel } from '../calendar.types';
+import { SlotInvalidDirective } from './slot-invalid.directive';
+import { SlotDragDirective, SlotDragEvent } from './slot.directive';
+
+=======
 } from '@angular/core';
 import { DragType, SlotViewModel } from '../calendar.types';
 import { SlotInvalidDirective } from './slot-invalid.directive';
@@ -16,11 +27,12 @@ export interface SlotPointerDownPayload {
   type: DragType;
 }
 
+>>>>>>> main
 @Component({
   selector: 'app-compact-calendar-slot',
   standalone: true,
   encapsulation: ViewEncapsulation.Emulated,
-  imports: [SlotInvalidDirective],
+  imports: [SlotInvalidDirective, SlotDragDirective],
   templateUrl: './slot.component.html',
   styleUrls: ['./slot.component.scss'],
 })
@@ -33,30 +45,39 @@ export class CalendarSlotComponent {
   @Input() slot!: SlotViewModel;
   @Input() location!: string;
   @Input() invalid = false;
+  @Input() minutesInDay = 24 * 60;
+  @Input() snapStep = 30;
 
   @Output() slotClick = new EventEmitter<SlotViewModel>();
-  @Output() slotPointerDown = new EventEmitter<SlotPointerDownPayload>();
+  @Output() slotDragStart = new EventEmitter<SlotDragEvent>();
+  @Output() slotDragMove = new EventEmitter<SlotDragEvent>();
+  @Output() slotDragEnd = new EventEmitter<SlotDragEvent>();
 
   /**
-   * Emit both click and pointer-down events to allow the parent to select the
-   * slot while simultaneously initiating a drag or resize gesture.
+   * Emit click so the parent can open details even while the drag directive
+   * owns pointer events.
    */
-  onPointerDown(event: PointerEvent, type: DragType): void {
-    event.stopPropagation();
-    event.preventDefault();
-
+  onPointerDown(): void {
     this.slotClick.emit(this.slot);
-    this.slotPointerDown.emit({
-      event,
-      slot: this.slot,
-      location: this.location,
-      type,
-    });
   }
 
   /** Propagate a plain click without starting a drag sequence. */
   onClick(event: MouseEvent): void {
     event.stopPropagation();
     this.slotClick.emit(this.slot);
+  }
+
+  /** Bubble drag lifecycle events from the directive to the parent calendar. */
+  onDragStart(event: SlotDragEvent): void {
+    this.slotClick.emit(this.slot);
+    this.slotDragStart.emit(event);
+  }
+
+  onDragMove(event: SlotDragEvent): void {
+    this.slotDragMove.emit(event);
+  }
+
+  onDragEnd(event: SlotDragEvent): void {
+    this.slotDragEnd.emit(event);
   }
 }
