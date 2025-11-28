@@ -62,4 +62,14 @@
     [autoHideMs]="10000"
     [loadingMs]="800"
   ></app-slot-detail>
+
+  <div
+    class="creation-warning"
+    role="alert"
+    *ngIf="creationWarning as warning"
+    [class.visible]="!!warning"
+  >
+    <div class="title">Cannot create a slot here</div>
+    <div class="message">{{ warning.message }}</div>
+  </div>
 </div>

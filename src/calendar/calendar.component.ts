@@ -126,6 +126,16 @@ export class CompactCalendarComponent
   selectedSlot: SlotViewModel | null = null;
   selectedSlotTimeRange = '';
 
+  /**
+   * Warning message shown when a slot creation attempt is invalid due to
+   * collisions or non-working hours. Displayed as a red badge similar to the
+   * standard slot detail card.
+   */
+  creationWarning: { reason: 'conflict' | 'nonwork'; message: string } | null =
+    null;
+  /** Timeout that auto-hides the creation warning badge. */
+  private creationWarningTimer: any = null;
+
   constructor(
     private renderer: Renderer2,
     private hostEl: ElementRef<HTMLElement>
@@ -177,6 +187,9 @@ export class CompactCalendarComponent
     }
     if (this.invalidFlashTimer) {
       clearTimeout(this.invalidFlashTimer);
+    }
+    if (this.creationWarningTimer) {
+      clearTimeout(this.creationWarningTimer);
     }
     this.cleanupGlobalPointerEvents();
 
@@ -630,6 +643,12 @@ export class CompactCalendarComponent
       selectionEl.style.left = `${leftPct}%`;
       selectionEl.style.width = `${widthPct}%`;
       selectionEl.classList.toggle('invalid', invalid);
+
+      if (invalid) {
+        this.showCreationWarning(conflict ? 'conflict' : 'nonwork');
+      } else {
+        this.clearCreationWarning();
+      }
       return;
     }
   }
@@ -704,11 +723,13 @@ export class CompactCalendarComponent
 
       const bounds = this.getWorkingBounds(location);
       if (bounds && (from < bounds.start || to > bounds.end)) {
+        this.showCreationWarning('nonwork');
         return;
       }
 
       const conflict = this.hasConflict(null as any, location, from, to);
       if (conflict) {
+        this.showCreationWarning('conflict');
         return;
       }
 
@@ -734,6 +755,8 @@ export class CompactCalendarComponent
       this.rebuild();
       this.slotChange.emit(newSlot);
 
+      this.clearCreationWarning();
+
       return;
     }
   }
@@ -753,6 +776,8 @@ export class CompactCalendarComponent
     location: string
   ): void {
     if (event.button !== 0) return;
+
+    this.clearCreationWarning();
 
     // if clicked on a slot, ignore (slot has its own handler)
     const targetSlot = (event.target as HTMLElement | null)?.closest('.slot');
@@ -908,6 +933,37 @@ export class CompactCalendarComponent
         }
       }
     }
+  }
+
+  /**
+   * Surface a warning badge when slot creation is blocked by conflicts or
+   * non-working hours. The badge auto-hides after a short delay.
+   */
+  private showCreationWarning(reason: 'conflict' | 'nonwork'): void {
+    const message =
+      reason === 'conflict'
+        ? 'Cannot create a slot here because it overlaps an existing slot.'
+        : 'Cannot create a slot here because it falls outside working hours.';
+
+    this.creationWarning = { reason, message };
+
+    if (this.creationWarningTimer) {
+      clearTimeout(this.creationWarningTimer);
+    }
+
+    this.creationWarningTimer = setTimeout(() => {
+      this.creationWarning = null;
+      this.creationWarningTimer = null;
+    }, 2500);
+  }
+
+  /** Hide the creation warning and clear any pending timeout. */
+  private clearCreationWarning(): void {
+    if (this.creationWarningTimer) {
+      clearTimeout(this.creationWarningTimer);
+      this.creationWarningTimer = null;
+    }
+    this.creationWarning = null;
   }
 
   /** Commit the final drag result into the underlying data. */
