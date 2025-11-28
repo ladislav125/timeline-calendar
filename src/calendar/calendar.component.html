@@ -42,7 +42,11 @@
           *ngFor="let s of slotsByLocation[location] || []"
           [slot]="s"
           [location]="location"
-          (slotPointerDown)="onSlotPointerDownFromChild($event, track)"
+          [invalid]="s.invalid || false"
+          [minutesInDay]="minutesInDay"
+          (slotDragStart)="onSlotDragStart()"
+          (slotDragMove)="onSlotDragMove($event)"
+          (slotDragEnd)="onSlotDragEnd($event)"
           (slotClick)="onSlotClick(s)"
         ></app-compact-calendar-slot>
       </div>
@@ -52,7 +56,7 @@
   <div
     class="time-identifier"
     *ngIf="showNowLine && nowPercent >= 0"
-    [style.left.%]="nowPercent"
+    [style.left]="nowLineLeft"
   ></div>
 
   <app-slot-detail
@@ -61,4 +65,14 @@
     [autoHideMs]="10000"
     [loadingMs]="800"
   ></app-slot-detail>
+
+  <div
+    class="creation-warning"
+    role="alert"
+    *ngIf="creationWarning as warning"
+    [class.visible]="!!warning"
+  >
+    <div class="title">Cannot create a slot here</div>
+    <div class="message">{{ warning.message }}</div>
+  </div>
 </div>

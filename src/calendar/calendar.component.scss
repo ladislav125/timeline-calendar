@@ -7,6 +7,7 @@
 
   --row-height: 58px;
   --label-col-width: 220px;
+  --header-height: 55px;
   --grid-bg: #f6f7fb;
   --grid-line: #d7dbe7; // hour
   --grid-line-light: #f1eaea; // half-hour
@@ -20,6 +21,8 @@
 
 .compact-calendar .cal-head {
   display: flex;
+  height: var(--header-height);
+  align-items: stretch;
   border-bottom: 1px solid #e5e7eb;
   background: #ffffff;
 }
@@ -45,14 +48,16 @@
 .compact-calendar .cal-head .timeline {
   position: relative;
   flex: 1;
-  height: 44px;
-  overflow: hidden;
+  height: 100%;
+  min-height: 44px;
+  overflow: visible;
 }
 
 .compact-calendar .cal-head .hours {
   position: relative;
   width: 100%;
   height: 100%;
+  overflow: visible;
 }
 
 /* Draw all vertical lines via background:
@@ -63,7 +68,7 @@
   content: '';
   position: absolute;
   top: 20px;
-  bottom: 0;
+  bottom: 10px;
   left: 0;
   right: 0;
   background-image: linear-gradient(
@@ -80,7 +85,7 @@
   content: '';
   position: absolute;
   top: 30px;
-  bottom: 0;
+  bottom: 10px;
   left: 0;
   right: 0;
   background-image: linear-gradient(
@@ -167,16 +172,65 @@
   z-index: 2;
 }
 
+.compact-calendar .slot-selection.invalid {
+  background: rgba(226, 76, 76, 0.3);
+}
+
 /* current time line */
 
 .compact-calendar .time-identifier {
   position: absolute;
-  top: 44px; /* exactly under header */
+  top: var(--header-height); /* exactly under header */
   bottom: 0;
   width: 2px;
   background: rgba(239, 68, 68, 0.9);
   pointer-events: none;
   z-index: 5;
+}
+
+.compact-calendar .time-identifier::before {
+  content: '';
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.9);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 2px #fff;
+}
+
+.compact-calendar .creation-warning {
+  position: fixed;
+  left: 1rem;
+  bottom: 1rem;
+  min-width: 280px;
+  max-width: 360px;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  background: rgba(226, 76, 76, 0.92);
+  color: #fff;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.35);
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 1000;
+}
+
+.compact-calendar .creation-warning.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.compact-calendar .creation-warning .title {
+  font-weight: 800;
+  margin-bottom: 0.25rem;
+}
+
+.compact-calendar .creation-warning .message {
+  font-size: 0.95rem;
+  line-height: 1.3;
 }
 
 
