@@ -5,6 +5,7 @@ import {
   EventEmitter,
   HostListener,
   Input,
+  NgZone,
   OnDestroy,
   Output,
 } from '@angular/core';
@@ -90,7 +91,7 @@ export class SlotDragDirective implements OnDestroy {
 
   private dragCtx: InternalDragCtx | null = null;
 
-  constructor(private el: ElementRef<HTMLElement>) {}
+  constructor(private el: ElementRef<HTMLElement>, private zone: NgZone) {}
 
   /** Remove global listeners when the directive is destroyed. */
   ngOnDestroy(): void {
@@ -179,55 +180,57 @@ export class SlotDragDirective implements OnDestroy {
    * the pointer so the host can provide cross-row previews.
    */
   private onWindowPointerMove = (ev: PointerEvent) => {
-    if (!this.dragCtx) return;
+    this.zone.run(() => {
+      if (!this.dragCtx) return;
 
-    const {
-      trackRect,
-      type,
-      startX,
-      startFromMins,
-      startToMins,
-      slotId,
-      currentLocation,
-    } = this.dragCtx;
+      const {
+        trackRect,
+        type,
+        startX,
+        startFromMins,
+        startToMins,
+        slotId,
+        currentLocation,
+      } = this.dragCtx;
 
-    const dx = ev.clientX - startX;
-    const deltaMinutes = (dx / trackRect.width) * this.minutesInDay;
+      const dx = ev.clientX - startX;
+      const deltaMinutes = (dx / trackRect.width) * this.minutesInDay;
 
-    let newFrom = startFromMins;
-    let newTo = startToMins;
-    const minSpan = 30;
+      let newFrom = startFromMins;
+      let newTo = startToMins;
+      const minSpan = 30;
 
-    if (type === 'move') {
-      const span = startToMins - startFromMins;
-      let rawFrom = startFromMins + deltaMinutes;
-      rawFrom = this.clamp(rawFrom, 0, this.minutesInDay - span);
-      newFrom = this.snap(rawFrom);
-      newTo = newFrom + span;
-    } else if (type === 'resize-start') {
-      let rawFrom = startFromMins + deltaMinutes;
-      rawFrom = this.clamp(rawFrom, 0, startToMins - minSpan);
-      newFrom = this.snap(rawFrom);
-    } else if (type === 'resize-end') {
-      let rawTo = startToMins + deltaMinutes;
-      rawTo = this.clamp(rawTo, startFromMins + minSpan, this.minutesInDay);
-      newTo = this.snap(rawTo);
-    }
+      if (type === 'move') {
+        const span = startToMins - startFromMins;
+        let rawFrom = startFromMins + deltaMinutes;
+        rawFrom = this.clamp(rawFrom, 0, this.minutesInDay - span);
+        newFrom = this.snap(rawFrom);
+        newTo = newFrom + span;
+      } else if (type === 'resize-start') {
+        let rawFrom = startFromMins + deltaMinutes;
+        rawFrom = this.clamp(rawFrom, 0, startToMins - minSpan);
+        newFrom = this.snap(rawFrom);
+      } else if (type === 'resize-end') {
+        let rawTo = startToMins + deltaMinutes;
+        rawTo = this.clamp(rawTo, startFromMins + minSpan, this.minutesInDay);
+        newTo = this.snap(rawTo);
+      }
 
-    // which row are we over?
-    const targetLoc =
-      this.getLocationAtPoint(ev.clientX, ev.clientY) ?? currentLocation;
+      // which row are we over?
+      const targetLoc =
+        this.getLocationAtPoint(ev.clientX, ev.clientY) ?? currentLocation;
 
-    this.dragCtx.currentLocation = targetLoc;
-    this.dragCtx.currentFromMins = newFrom;
-    this.dragCtx.currentToMins = newTo;
+      this.dragCtx.currentLocation = targetLoc;
+      this.dragCtx.currentFromMins = newFrom;
+      this.dragCtx.currentToMins = newTo;
 
-    this.dragMove.emit({
-      slotId,
-      location: targetLoc,
-      type,
-      fromMins: newFrom,
-      toMins: newTo,
+      this.dragMove.emit({
+        slotId,
+        location: targetLoc,
+        type,
+        fromMins: newFrom,
+        toMins: newTo,
+      });
     });
   };
 
@@ -239,30 +242,32 @@ export class SlotDragDirective implements OnDestroy {
    * removed to avoid leaks.
    */
   private onWindowPointerUp = (ev: PointerEvent) => {
-    if (!this.dragCtx) return;
+    this.zone.run(() => {
+      if (!this.dragCtx) return;
 
-    const { slotId, currentLocation, currentFromMins, currentToMins, type } =
-      this.dragCtx;
+      const { slotId, currentLocation, currentFromMins, currentToMins, type } =
+        this.dragCtx;
 
-    const targetLoc =
-      this.getLocationAtPoint(ev.clientX, ev.clientY) || currentLocation;
+      const targetLoc =
+        this.getLocationAtPoint(ev.clientX, ev.clientY) || currentLocation;
 
-    this.dragEnd.emit({
-      slotId,
-      location: targetLoc,
-      type,
-      fromMins: currentFromMins,
-      toMins: currentToMins,
+      this.dragEnd.emit({
+        slotId,
+        location: targetLoc,
+        type,
+        fromMins: currentFromMins,
+        toMins: currentToMins,
+      });
+
+      this.dragCtx = null;
+      this.detachWindowListeners();
+
+      try {
+        this.el.nativeElement.releasePointerCapture(ev.pointerId);
+      } catch {
+        /* noop */
+      }
     });
-
-    this.dragCtx = null;
-    this.detachWindowListeners();
-
-    try {
-      this.el.nativeElement.releasePointerCapture(ev.pointerId);
-    } catch {
-      /* noop */
-    }
   };
 
   /* ============ HELPERS ============ */
