@@ -39,7 +39,7 @@
         ></div>
         <!-- slots -->
         <app-compact-calendar-slot
-          *ngFor="let s of slotsByLocation[location] || []"
+          *ngFor="let s of slotsByLocation[location] || []; trackBy: trackSlotById"
           [slot]="s"
           [location]="location"
           [invalid]="s.invalid || false"

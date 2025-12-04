@@ -23,6 +23,7 @@
   user-select: none;
   touch-action: none;
   z-index: 3;
+  container-type: inline-size;
 }
 .slot:active {
   cursor: grabbing;
@@ -39,7 +40,20 @@
   opacity: 0.85;
   overflow: hidden;
   text-overflow: ellipsis;
-} /* resize handles */
+}
+
+@container (max-width: 43px) {
+  .slot {
+    padding-right: 10px;
+  }
+
+  .slot .tn,
+  .slot .carrier {
+    display: none;
+  }
+}
+
+/* resize handles */
 .slot .h-left,
 .slot .h-right {
   position: absolute;
