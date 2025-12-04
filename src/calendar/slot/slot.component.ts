@@ -1,11 +1,4 @@
-import {
-import {
-  Component,
-  EventEmitter,
-  Input,
-  Output,
-  ViewEncapsulation,
-} from '@angular/core';
+import { Component, EventEmitter, Input, Output, ViewEncapsulation } from '@angular/core';
 import { SlotViewModel } from '../calendar.types';
 import { SlotInvalidDirective } from './slot-invalid.directive';
 import { SlotDragDirective, SlotDragEvent } from './slot.directive';
