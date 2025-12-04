@@ -23,6 +23,7 @@
   user-select: none;
   touch-action: none;
   z-index: 3;
+  container-type: inline-size;
 }
 .slot:active {
   cursor: grabbing;
@@ -41,13 +42,15 @@
   text-overflow: ellipsis;
 }
 
-.slot.compact-content {
-  padding-right: 10px;
-}
+@container (max-width: 43px) {
+  .slot {
+    padding-right: 10px;
+  }
 
-.slot.compact-content .tn,
-.slot.compact-content .carrier {
-  display: none;
+  .slot .tn,
+  .slot .carrier {
+    display: none;
+  }
 }
 
 /* resize handles */
