@@ -39,7 +39,18 @@
   opacity: 0.85;
   overflow: hidden;
   text-overflow: ellipsis;
-} /* resize handles */
+}
+
+.slot.compact-content {
+  padding-right: 10px;
+}
+
+.slot.compact-content .tn,
+.slot.compact-content .carrier {
+  display: none;
+}
+
+/* resize handles */
 .slot .h-left,
 .slot .h-right {
   position: absolute;

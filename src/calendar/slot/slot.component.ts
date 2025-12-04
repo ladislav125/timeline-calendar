@@ -2,6 +2,10 @@ import {
   Component,
   EventEmitter,
   Input,
+  ElementRef,
+  ChangeDetectorRef,
+  AfterViewInit,
+  OnDestroy,
   Output,
   ViewEncapsulation,
 } from '@angular/core';
@@ -22,7 +26,7 @@ import { SlotDragDirective, SlotDragEvent } from './slot.directive';
  * calendar to handle dragging/resizing. It also accepts an `invalid` flag that
  * triggers the shared shake animation via `SlotInvalidDirective`.
  */
-export class CalendarSlotComponent {
+export class CalendarSlotComponent implements AfterViewInit, OnDestroy {
   @Input() slot!: SlotViewModel;
   @Input() location!: string;
   @Input() invalid = false;
@@ -33,6 +37,38 @@ export class CalendarSlotComponent {
   @Output() slotDragStart = new EventEmitter<SlotDragEvent>();
   @Output() slotDragMove = new EventEmitter<SlotDragEvent>();
   @Output() slotDragEnd = new EventEmitter<SlotDragEvent>();
+
+  compactContent = false;
+  private resizeObserver?: ResizeObserver;
+
+  constructor(
+    private readonly host: ElementRef<HTMLElement>,
+    private readonly cdr: ChangeDetectorRef
+  ) {}
+
+  ngAfterViewInit(): void {
+    this.resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const width = entry.contentRect?.width ?? entry.target.getBoundingClientRect().width;
+        this.updateCompactFlag(width);
+      }
+    });
+
+    this.resizeObserver.observe(this.host.nativeElement);
+    this.updateCompactFlag(this.host.nativeElement.getBoundingClientRect().width);
+  }
+
+  ngOnDestroy(): void {
+    this.resizeObserver?.disconnect();
+  }
+
+  private updateCompactFlag(width: number): void {
+    const shouldCompact = width < 44;
+    if (shouldCompact !== this.compactContent) {
+      this.compactContent = shouldCompact;
+      this.cdr.markForCheck();
+    }
+  }
 
   /** Propagate a plain click without starting a drag sequence. */
   onClick(event: MouseEvent): void {
