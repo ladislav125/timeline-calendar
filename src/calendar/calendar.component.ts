@@ -530,6 +530,7 @@ export class CompactCalendarComponent
   onSlotDragMove(event: SlotDragEvent): void {
     const { slotId, location, fromMins, toMins } = event;
     this.updateSlotViewModel(slotId, location, fromMins, toMins, false);
+    this.updateSelectedSlotProjection(slotId, location, fromMins, toMins);
   }
 
   /** Validate and commit (or revert) a completed drag operation. */
@@ -544,6 +545,7 @@ export class CompactCalendarComponent
     if (conflict || outOfWorking) {
       this.rebuild();
       this.flashInvalid(slotId);
+      this.syncSelectedSlotFromData(slotId);
       return;
     }
 
@@ -728,6 +730,17 @@ export class CompactCalendarComponent
      Helpers
      =========================== */
 
+  /** Locate a slot view model by id across all locations. */
+  private findSlotViewModel(slotId: string | number): SlotViewModel | null {
+    for (const loc of this.locations) {
+      const match = this.slotsByLocation[loc]?.find((s) => s.id === slotId);
+      if (match) {
+        return match;
+      }
+    }
+    return null;
+  }
+
   /** Find location (row) under the given screen point. */
   private getLocationAtPoint(x: number, y: number): string | null {
     const el = document.elementFromPoint(x, y) as HTMLElement | null;
@@ -789,6 +802,58 @@ export class CompactCalendarComponent
       width,
       invalid,
     });
+  }
+
+  /**
+   * Keep the slot detail badge in sync with live drag/resizes.
+   *
+   * When the selected slot is being moved, project the updated minutes into its
+   * raw date strings so the badge reflects the in-progress time range. The
+   * location is also updated to follow cross-row moves.
+   */
+  private updateSelectedSlotProjection(
+    slotId: string | number,
+    location: string,
+    fromMins: number,
+    toMins: number
+  ): void {
+    if (!this.selectedSlot || this.selectedSlot.id !== slotId) return;
+
+    const clampedFrom = this.snapToStep(
+      this.clamp(fromMins, 0, this.minutesInDay),
+      30
+    );
+    const clampedTo = this.snapToStep(
+      this.clamp(toMins, 0, this.minutesInDay),
+      30
+    );
+
+    const baseIso = this.selectedSlot.raw.dateTimeFrom;
+
+    this.selectedSlot = {
+      ...this.selectedSlot,
+      raw: {
+        ...this.selectedSlot.raw,
+        location,
+        dateTimeFrom: this.minutesToIso(baseIso, clampedFrom),
+        dateTimeTo: this.minutesToIso(baseIso, clampedTo),
+      },
+    };
+  }
+
+  /**
+   * After a drag finishes, align the selected slot with the current data set so
+   * the detail badge reflects the committed times (or the reverted originals).
+   */
+  private syncSelectedSlotFromData(slotId: string | number): void {
+    if (!this.selectedSlot || this.selectedSlot.id !== slotId) return;
+
+    const updatedVm = this.findSlotViewModel(slotId);
+    if (updatedVm) {
+      this.selectedSlot = { ...updatedVm, color: updatedVm.color };
+    } else {
+      this.selectedSlot = null;
+    }
   }
 
   /**
@@ -900,6 +965,7 @@ export class CompactCalendarComponent
 
     this.data = updated;
     this.rebuild();
+    this.syncSelectedSlotFromData(slotId);
 
     const updatedSlot = this.data.find((s) => s.id === slotId);
     if (updatedSlot) {
