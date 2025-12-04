@@ -719,6 +719,11 @@ export class CompactCalendarComponent
     };
   }
 
+  /** Stable trackBy function so slot views persist across drag updates. */
+  trackSlotById(_: number, slot: SlotViewModel): string | number {
+    return slot.id;
+  }
+
   /* ===========================
      Helpers
      =========================== */
