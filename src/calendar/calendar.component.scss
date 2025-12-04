@@ -88,12 +88,15 @@
   bottom: 10px;
   left: 0;
   right: 0;
+  /* place the tick in the middle of each hour column so it doesn't overlap with the hour line */
   background-image: linear-gradient(
     to right,
-    var(--grid-line-light) 1px,
-    transparent 1px
+    transparent 50%,
+    var(--grid-line-light) 50%,
+    var(--grid-line-light) calc(50% + 1px),
+    transparent calc(50% + 1px)
   );
-  background-size: calc(100% / 48) 100%; /* EXACT 30 min column */
+  background-size: calc(100% / 24) 100%; /* center of each hour column */
   background-repeat: repeat-x;
 }
 
@@ -147,8 +150,14 @@
       var(--grid-line) 1px,
       transparent 1px
     ),
-    linear-gradient(to right, var(--grid-line-light) 1px, transparent 1px);
-  background-size: calc(100% / 24) 100%, /* hour columns */ calc(100% / 48) 100%; /* half-hour columns */
+    linear-gradient(
+      to right,
+      transparent 50%,
+      var(--grid-line-light) 50%,
+      var(--grid-line-light) calc(50% + 1px),
+      transparent calc(50% + 1px)
+    );
+  background-size: calc(100% / 24) 100%, /* hour columns */ calc(100% / 24) 100%; /* half-hour centered in hour */
   background-repeat: repeat-x, repeat-x;
   background-position: left top, left top;
 }
