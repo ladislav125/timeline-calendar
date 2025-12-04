@@ -235,7 +235,7 @@ export class CompactCalendarComponent
       const slots = this.data.filter((d) => d.location === loc);
       this.slotsByLocation[loc] = slots.map((s, idx) => {
         const fromM = this.toMinutesFromMidnight(s.dateTimeFrom);
-        const toM = this.toMinutesFromMidnight(s.dateTimeTo);
+        const toM = this.toMinutesFromMidnight(s.dateTimeTo, true);
         const clampedFrom = this.snapToStep(
           this.clamp(fromM, 0, this.minutesInDay),
           30
@@ -314,7 +314,10 @@ export class CompactCalendarComponent
    * midnight. The conversion intentionally ignores time zones because the
    * compact calendar operates in the provided local day context.
    */
-  private toMinutesFromMidnight(iso: string): number {
+  private toMinutesFromMidnight(
+    iso: string,
+    treatMidnightAsNextDay = false
+  ): number {
     if (!iso) return 0;
     const parts = iso.split('T');
     if (parts.length < 2) return 0;
@@ -325,6 +328,10 @@ export class CompactCalendarComponent
     const mm = Number(mmStr ?? 0);
 
     const mins = hh * 60 + mm;
+    if (treatMidnightAsNextDay && mins === 0) {
+      return this.minutesInDay;
+    }
+
     return isFinite(mins) ? mins : 0;
   }
 
@@ -336,11 +343,33 @@ export class CompactCalendarComponent
   private minutesToIso(baseIso: string, mins: number): string {
     if (!baseIso) return baseIso;
     const [datePart] = baseIso.split('T');
-    const h = Math.floor(mins / 60);
-    const m = mins % 60;
+    const [yStr, mStr, dStr] = datePart.split('-');
+    const baseYear = Number(yStr);
+    const baseMonth = Number(mStr) - 1;
+    const baseDay = Number(dStr);
+
+    if (!isFinite(baseYear) || !isFinite(baseMonth) || !isFinite(baseDay)) {
+      return baseIso;
+    }
+
+    const safeMins = Math.max(0, mins);
+    const dayCarry = Math.floor(safeMins / this.minutesInDay);
+    const dayMins = safeMins % this.minutesInDay;
+
+    const h = Math.floor(dayMins / 60);
+    const m = dayMins % 60;
     const hh = h.toString().padStart(2, '0');
     const mm = m.toString().padStart(2, '0');
-    return `${datePart}T${hh}:${mm}:00`;
+
+    const dateUtc = Date.UTC(baseYear, baseMonth, baseDay);
+    const shifted = new Date(dateUtc);
+    shifted.setUTCDate(shifted.getUTCDate() + dayCarry);
+
+    const yyyy = shifted.getUTCFullYear();
+    const mmMonth = (shifted.getUTCMonth() + 1).toString().padStart(2, '0');
+    const dd = shifted.getUTCDate().toString().padStart(2, '0');
+
+    return `${yyyy}-${mmMonth}-${dd}T${hh}:${mm}:00`;
   }
 
   /** Restrict `v` between `min` and `max`. */
@@ -478,7 +507,7 @@ export class CompactCalendarComponent
 
     return others.some((s) => {
       const a = this.toMinutesFromMidnight(s.dateTimeFrom);
-      const b = this.toMinutesFromMidnight(s.dateTimeTo);
+      const b = this.toMinutesFromMidnight(s.dateTimeTo, true);
       // intervals overlap if not (to <= a or from >= b)
       return !(toMins <= a || fromMins >= b);
     });

@@ -141,7 +141,7 @@ export class SlotDragDirective implements OnDestroy {
     const trackRect = trackEl.getBoundingClientRect();
 
     const fromM = this.toMinutesFromMidnight(this.slot.raw.dateTimeFrom);
-    const toM = this.toMinutesFromMidnight(this.slot.raw.dateTimeTo);
+    const toM = this.toMinutesFromMidnight(this.slot.raw.dateTimeTo, true);
 
     const startFrom = this.clamp(fromM, 0, this.minutesInDay);
     const startTo = this.clamp(toM, 0, this.minutesInDay);
@@ -307,7 +307,10 @@ export class SlotDragDirective implements OnDestroy {
   }
 
   /** Convert an ISO string to minutes-from-midnight (local). */
-  private toMinutesFromMidnight(iso: string): number {
+  private toMinutesFromMidnight(
+    iso: string,
+    treatMidnightAsNextDay = false
+  ): number {
     if (!iso) return 0;
     const [_, timePart] = iso.split('T');
     if (!timePart) return 0;
@@ -315,6 +318,9 @@ export class SlotDragDirective implements OnDestroy {
     const hh = Number(hhStr ?? 0);
     const mm = Number(mmStr ?? 0);
     const mins = hh * 60 + mm;
+    if (treatMidnightAsNextDay && mins === 0) {
+      return this.minutesInDay;
+    }
     return isFinite(mins) ? mins : 0;
   }
 
